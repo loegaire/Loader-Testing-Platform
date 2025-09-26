@@ -11,7 +11,8 @@ __pycache__/
 /output/*
 /uploads/*
 /test_logs/*
-/build/
+/build/*
+/shellcodé/*
 
 # File của các IDE
 .vscode/
