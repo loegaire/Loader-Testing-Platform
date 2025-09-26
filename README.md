@@ -124,13 +124,74 @@ FUD_Testing_Platform/
 ---
 
 ## 📅 Lộ trình Phát triển (Roadmap)
--   [ ] Tích hợp các kỹ thuật mã hóa mới: AES, RC4.
--   [ ] Thêm kỹ thuật injection: Process Hollowing, Early Bird, APC Injection.
--   [ ] Giao diện hiển thị tiến trình test real-time.
--   [ ] Thu thập log chi tiết từ Windows Event / EDR alert.
--   [ ] Thử nghiệm các kỹ thuật chống sandbox (anti-sandbox).
--   [ ] **(Tầm nhìn dài hạn)** Module phân tích log bằng quy tắc (rule-based) hoặc AI/ML để gợi ý kỹ thuật tối ưu.
 
+Dự án được chia thành các giai đoạn chính, tập trung vào việc xây dựng nền tảng, nghiên cứu kỹ thuật, và mở rộng khả năng phân tích.
+
+---
+
+### ✅ **Giai đoạn 1: Xây dựng Nền tảng Tự động hóa (Đã hoàn thành)**
+
+Giai đoạn này tập trung vào việc xây dựng bộ khung và quy trình tự động hóa cốt lõi. Các công việc đã hoàn thành bao gồm:
+
+*   **Phát triển Engine Điều khiển (`core_engine.py`):**
+    -   Xây dựng logic điều khiển `vmrun` để quản lý máy ảo (revert, start, stop).
+    -   Tích hợp chức năng build payload tự động.
+    -   Xây dựng C2 Listener đơn giản để xác nhận kết quả.
+
+*   **Xây dựng Giao diện Dòng lệnh (`cli.py`):**
+    -   Tạo giao diện CLI cho phép người dùng cấu hình và chạy các bài test một cách linh hoạt.
+
+*   **Phát triển Loader Cơ bản (C++):**
+    -   Cài đặt kỹ thuật mã hóa cơ bản: **XOR Encryption**.
+    -   Cài đặt kỹ thuật nạp mã cơ bản: **Classic Injection (`CreateThread`)**.
+
+*   **Xây dựng Môi trường Lab Ban đầu:**
+    -   Thiết lập máy ảo **Windows Defender** với cấu hình chuẩn.
+    -   Cài đặt và cấu hình **Sysmon** để ghi log hành vi chi tiết.
+    -   Phát triển script thu thập log tự động cho môi trường Defender & Sysmon.
+
+*   **Hoàn thiện Quy trình Tự động (Pipeline):**
+    -   Tự động hóa thành công toàn bộ chuỗi: **Build → Revert VM → Start VM → Deploy → Execute → Collect Logs → Report**.
+
+---
+
+### 🚀 **Giai đoạn 2: Nghiên cứu Kỹ thuật & Mở rộng Lab (Các bước tiếp theo)**
+
+Giai đoạn này tập trung vào mục tiêu nghiên cứu chính của đồ án: phát triển và đánh giá các kỹ thuật lẩn tránh mới.
+
+*   **🔬 Nghiên cứu & Phát triển Kỹ thuật Lẩn tránh:**
+    -   **Mã hóa (Encryption):**
+        -   Tích hợp mã hóa **AES-256** (sử dụng thư viện C++ hoặc tự triển khai).
+    -   **Nạp mã (Injection):**
+        -   Triển khai kỹ thuật **Process Hollowing**.
+        -   Triển khai kỹ thuật **APC Injection**.
+    -   **Lẩn tránh Phân tích (Evasion & Anti-Analysis):**
+        -   Cài đặt các kỹ thuật **Anti-Sandbox** (kiểm tra RAM, CPU, thời gian `Sleep`).
+        -   Tích hợp **API Hashing** để che giấu các lệnh gọi Windows API nhạy cảm.
+
+*   **🧪 Mở rộng Môi trường Lab:**
+    -   Xây dựng và cấu hình máy ảo cho ít nhất **một giải pháp EDR của bên thứ ba** (ví dụ: SentinelOne, Bitdefender...).
+    -   Nghiên cứu và phát triển **script thu thập log tùy chỉnh** cho môi trường EDR mới.
+
+*   **🖥️ Phát triển Nền tảng & Giao diện (UI/UX):**
+    -   Xây dựng **giao diện web (Dashboard)** cơ bản bằng Flask cho phép cấu hình và chạy test.
+    -   Thiết kế trang hiển thị kết quả một cách trực quan (bảng, log có thể thu gọn).
+
+---
+
+### 🌟 **Giai đoạn 3: Phân tích Nâng cao & Hoàn thiện (Tầm nhìn dài hạn)**
+
+Giai đoạn cuối cùng tập trung vào việc biến dữ liệu thu thập được thành các thông tin hữu ích và hoàn thiện công cụ.
+
+*   **📊 Phân tích & Báo cáo Dữ liệu:**
+    -   Nâng cấp module thu thập log để lấy được các sự kiện chi tiết hơn (ví dụ: từ các kênh Event Log khác).
+    -   Xây dựng một **engine phân tích log dựa trên quy tắc (rule-based)** để tự động nhận diện các mẫu hành vi và cảnh báo tương ứng.
+    -   Trực quan hóa dữ liệu (ví dụ: biểu đồ so sánh hiệu quả của các kỹ thuật trên từng AV).
+
+*   **🖥️ Nâng cấp Nền tảng & Giao diện:**
+    -   Cải thiện Dashboard với khả năng **hiển thị tiến trình test theo thời gian thực** (sử dụng AJAX/JavaScript).
+    -   Thêm chức năng quản lý, xem lại và so sánh kết quả của các lần test cũ.
+    
 ---
 
 ## 🔒 Phạm vi & Giới hạn
