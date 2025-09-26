@@ -14,7 +14,7 @@ logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] - 
 # Cập nhật thông tin máy ảo của bạn ở đây
 VMS_CONFIG = {
     "Windows Defender": {
-        "vmx_path": r"D:\VMs\Win11_Defender\Windows_11_01.vmx.vmx", # THAY ĐỔI ĐƯỜNG DẪN NÀY
+        "vmx_path": r"C:\Users\Duy\Documents\Virtual_Machines\Windows_11_01.vmx", # THAY ĐỔI ĐƯỜNG DẪN NÀY
         "user": "test",
         "pass": "test",
         "log_collector_host": "./log_collectors/collect_defender.ps1"
@@ -35,11 +35,58 @@ GUEST_LOG_COLLECTOR = os.path.join(GUEST_DESKTOP, "collect_logs.ps1")
 GUEST_LOG_OUTPUT = os.path.join(GUEST_DESKTOP, "detection_log.txt")
 
 # Cấu hình C2 Listener
-LISTENER_IP = "192.168.1.10" # THAY ĐỔI BẰNG IP CỦA MÁY HOST
+LISTENER_IP = "192.168.142.1" # THAY ĐỔI BẰNG IP CỦA MÁY HOST
 LISTENER_PORT = 4444
 
 # Biến toàn cục để listener thread cập nhật
 connection_received = False
+
+def wait_for_vm_ready(vm_info, timeout=120):
+    """
+    Periodically checks if the VM is ready by trying to list processes.
+    Returns True if ready, False if timeout is reached.
+    """
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        logging.info("Pinging VM to check for readiness...")
+        # Lệnh "listProcessesInGuest" là một cách "ping" VMware Tools hoàn hảo
+        check_cmd = ["vmrun", "-gu", vm_info["user"], "-gp", vm_info["pass"], "listProcessesInGuest", vm_info["vmx_path"]]
+        
+        # Chúng ta không muốn in lỗi ra màn hình mỗi lần ping thất bại
+        try:
+            subprocess.run(check_cmd, check=True, capture_output=True, text=True, timeout=10)
+            logging.info("VM is ready!")
+            return True
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            time.sleep(5) # Chờ 5 giây trước khi thử lại
+    
+    logging.error("Timeout reached while waiting for VM to become ready.")
+    return False
+
+def collect_guest_logs(vm_name, vm_info):
+    """
+    Consolidates the logic for collecting logs from a guest VM.
+    Returns the log content as a string.
+    """
+    # collector_script_on_host = vm_info.get("log_collector_host")
+    # if not (collector_script_on_host and os.path.exists(collector_script_on_host)):
+    #     return f"Log collector script not found or not defined for {vm_name}."
+
+    # logging.info(f"Deploying log collector: {collector_script_on_host}")
+    # run_command(["vmrun", "-gu", vm_info["user"], "-gp", vm_info["pass"], "copyFileToGuest", vm_info["vmx_path"], collector_script_on_host, GUEST_LOG_COLLECTOR])
+    
+    run_command(["vmrun", "-gu", vm_info["user"], "-gp", vm_info["pass"], "runProgramInGuest", vm_info["vmx_path"], "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", "-ExecutionPolicy", "Bypass", "-File", GUEST_LOG_COLLECTOR])
+    time.sleep(10)
+    
+    host_log_path = os.path.join("test_logs", f"log_{vm_name.replace(' ', '_')}_{int(time.time())}.txt")
+    if run_command(["vmrun", "-gu", vm_info["user"], "-gp", vm_info["pass"], "copyFileFromGuestToHost", vm_info["vmx_path"], GUEST_LOG_OUTPUT, host_log_path]):
+        try:
+            with open(host_log_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except Exception as e:
+            return f"Error reading log file: {e}"
+    else:
+        return "Failed to copy log file from guest."
 
 def run_command(cmd_list):
     """Hàm tiện ích để chạy lệnh và trả về True/False."""
@@ -140,11 +187,8 @@ def c2_listener():
         sock.close()
 
 def run_single_test(vm_name, payload_path, build_options):
-    """
-    Chạy một bài test hoàn chỉnh trên một máy ảo.
-    """
     global connection_received
-    connection_received = False # Reset cờ cho mỗi lần test
+    connection_received = False
     
     vm_info = VMS_CONFIG.get(vm_name)
     if not vm_info:
@@ -155,60 +199,70 @@ def run_single_test(vm_name, payload_path, build_options):
     # 1. Revert & Start VM
     if not run_command(["vmrun", "revertToSnapshot", vm_info["vmx_path"], CLEAN_SNAPSHOT_NAME]): return {"status": "FAILED", "log": "Failed to revert snapshot."}
     if not run_command(["vmrun", "-T", "ws", "start", vm_info["vmx_path"], "nogui"]): return {"status": "FAILED", "log": "Failed to start VM."}
-    logging.info("Waiting for VM to boot (60 seconds)...")
-    time.sleep(60)
+    
+    # --- BẮT ĐẦU NÂNG CẤP ---
 
-    # 2. Start C2 Listener
+    # 2. Chờ VM sẵn sàng (sẽ thêm logic kiểm tra ở đây)
+    logging.info("Waiting for VMware Tools to be ready (up to 120 seconds)...")
+    if not wait_for_vm_ready(vm_info, timeout=120):
+        run_command(["vmrun", "stop", vm_info["vmx_path"]])
+        return {"status": "FAILED", "log": "VM did not become ready (VMware Tools timeout)."}
+
+    # 3. Deploy
+
+    collector_script_on_host = vm_info.get("log_collector_host")
+    if not (collector_script_on_host and os.path.exists(collector_script_on_host)):
+        return f"Log collector script not found or not defined for {vm_name}."
+
+    logging.info(f"Deploying log collector: {collector_script_on_host}")
+    if not run_command(["vmrun", "-gu", vm_info["user"], "-gp", vm_info["pass"], "copyFileFromHostToGuest", vm_info["vmx_path"], collector_script_on_host, GUEST_LOG_COLLECTOR]):
+        # Lỗi copy file thường là do môi trường, không phải do AV, nên không cần lấy log
+        run_command(["vmrun", "stop", vm_info["vmx_path"]])
+        return {"status": "FAILED", "log": "Failed to copy collector script to guest. Check VMware Tools and user credentials."}
+
+
+    if not run_command(["vmrun", "-gu", vm_info["user"], "-gp", vm_info["pass"], "copyFileFromHostToGuest", vm_info["vmx_path"], payload_path, GUEST_PAYLOAD_PATH]):
+        logging.info("[WARNING] Failed to copy payload to guest. Potentially being statically scanned.")
+    
+    # 4. Start C2 Listener
     listener_thread = threading.Thread(target=c2_listener)
     listener_thread.start()
-    time.sleep(2)
-
-    # 3. Deploy & Execute
-    if not run_command(["vmrun", "-gu", vm_info["user"], "-gp", vm_info["pass"], "copyFileToGuest", vm_info["vmx_path"], payload_path, GUEST_PAYLOAD_PATH]):
-        run_command(["vmrun", "stop", vm_info["vmx_path"]])
-        listener_thread.join()
-        return {"status": "FAILED", "log": "Failed to copy payload to guest."}
-        
-    run_command(["vmrun", "-gu", vm_info["user"], "-gp", vm_info["pass"], "runProgramInGuest", vm_info["vmx_path"], "-noWait", GUEST_PAYLOAD_PATH])
+    time.sleep(7)
     
-    # 4. Wait for result
+    # 5. Execute
+    execute_success = run_command(["vmrun", "-gu", vm_info["user"], "-gp", vm_info["pass"], "runProgramInGuest", vm_info["vmx_path"], "-noWait", GUEST_PAYLOAD_PATH])
+    
+    # 6. Wait for result from listener
     listener_thread.join()
 
-    # 5. Collect Logs if failed
+    # 7. Phân tích kết quả và Thu thập Log
     log_details = "N/A"
-    if not connection_received:
-        logging.info("Test failed, collecting logs...")
-
-        collector_script_on_host = vm_info.get("log_collector_host")
-        if collector_script_on_host and os.path.exists(collector_script_on_host):
-            # Copy script collector đó vào máy ảo
-            logging.info(f"Deploying log collector: {collector_script_on_host}")
-            run_command(["vmrun", "-gu", vm_info["user"], "-gp", vm_info["pass"], "copyFileToGuest", vm_info["vmx_path"], collector_script_on_host, GUEST_LOG_COLLECTOR_PATH])
-            
-            # Chạy script collector trên máy ảo
-            run_command(["vmrun", "-gu", vm_info["user"], "-gp", vm_info["pass"], "runProgramInGuest", vm_info["vmx_path"], "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", "-ExecutionPolicy", "Bypass", "-File", GUEST_LOG_COLLECTOR])
-            time.sleep(10) # Cho script phức tạp hơn có thời gian chạy
-            
-            # Kéo file kết quả về (logic không đổi)
-            host_log_path = os.path.join("test_logs", f"log_{vm_name.replace(' ', '_')}_{int(time.time())}.txt")
-        
-            host_log_path = os.path.join("test_logs", f"log_{vm_name.replace(' ', '_')}_{int(time.time())}.txt")
-            if run_command(["vmrun", "-gu", vm_info["user"], "-gp", vm_info["pass"], "copyFileFromGuest", vm_info["vmx_path"], GUEST_LOG_OUTPUT, host_log_path]):
-                try:
-                    with open(host_log_path, 'r', encoding='utf-8') as f:
-                        log_details = f.read()
-                except Exception as e:
-                    log_details = f"Error reading log file: {e}"
-            else:
-                log_details = "Failed to copy log file from guest."
-
+    result_status = "UNKNOWN"
+    
+    if connection_received:
+        result_status = "SUCCESS"
+        log_details = "Reverse shell connection established."
+    else: # Connection failed
+        if not execute_success:
+            # Lỗi thực thi -> Rất có thể do Static Detection!
+            result_status = "FAILED (Static Detection?)"
+            log_details = "Execution failed. Payload might have been deleted on arrival."
         else:
-            log_details = f"Log collector script not found or not defined for {vm_name}."
+            # Thực thi thành công nhưng không có shell -> Lỗi Runtime Detection
+            result_status = "FAILED (Runtime Detection?)"
+            log_details = "Execution succeeded, but no shell received. Payload was likely blocked during runtime."
 
-    # 6. Cleanup
+        # TRONG MỌI TRƯỜNG HỢP THẤT BẠI, HÃY CỐ GẮNG THU THẬP LOG
+        logging.info(f"Test failed ({result_status}).")
+
+    logging.info("Collecting logs...")    
+    log_details += "\n\n" + collect_guest_logs(vm_name, vm_info) # Gọi hàm thu thập log mới
+        
+    # --- KẾT THÚC NÂNG CẤP ---
+
+    # 8. Cleanup
     logging.info("Stopping VM...")
-    # run_command(["vmrun", "stop", vm_info["vmx_path"]])
+    run_command(["vmrun", "stop", vm_info["vmx_path"]])
     time.sleep(10)
 
-    result_status = "SUCCESS" if connection_received else "FAILED"
     return {"status": result_status, "log": log_details}
