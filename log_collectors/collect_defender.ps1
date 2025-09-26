@@ -60,23 +60,19 @@ if ($null -eq $defenderEvents) {
 
 # --- Section 2: Sysmon Events ---
 
-"`r`n--- Sysmon Behavioral Events ---`r`n" | Out-File -FilePath $logFile -Encoding utf8 -Append
+"`r`n--- Sysmon Behavioral Events (Full Detail) ---`r`n" | Out-File -FilePath $logFile -Encoding utf8 -Append
 
-# Truy vấn tất cả các sự kiện Sysmon trong khoảng thời gian đã định
 $sysmonEvents = Get-WinEvent -FilterHashtable @{
     LogName   = 'Microsoft-Windows-Sysmon/Operational';
     StartTime = $StartTime;
 } -ErrorAction SilentlyContinue
 
 if ($null -eq $sysmonEvents) {
-    "No new Sysmon events found in the last 5 minutes.`r`n" | Out-File -FilePath $logFile -Encoding utf8 -Append
+    "No new Sysmon events found.`r`n" | Out-File -FilePath $logFile -Encoding utf8 -Append
 } else {
-    # Ghi lại các sự kiện Sysmon một cách ngắn gọn
-    foreach ($event in $sysmonEvents) {
-        # Lấy dòng đầu tiên của message để log không quá dài
-        $shortMessage = ($event.Message -split '\r?\n' | Select-Object -First 1).Trim()
-        "Time: $($event.TimeCreated) | ID: $($event.Id) | Event: $shortMessage" | Out-File -FilePath $logFile -Encoding utf8 -Append
-    }
+    # NÂNG CẤP: Sử dụng Format-List để xuất toàn bộ chi tiết của mỗi sự kiện
+    # thay vì chỉ lấy dòng đầu tiên.
+    ($sysmonEvents | Format-List | Out-String) | Out-File -FilePath $logFile -Encoding utf8 -Append
 }
 
 Write-Host "Log collection complete. Output saved to $logFile"
