@@ -199,8 +199,6 @@ def run_single_test(vm_name, payload_path, build_options):
     # 1. Revert & Start VM
     if not run_command(["vmrun", "revertToSnapshot", vm_info["vmx_path"], CLEAN_SNAPSHOT_NAME]): return {"status": "FAILED", "log": "Failed to revert snapshot."}
     if not run_command(["vmrun", "-T", "ws", "start", vm_info["vmx_path"], "nogui"]): return {"status": "FAILED", "log": "Failed to start VM."}
-    
-    # --- BẮT ĐẦU NÂNG CẤP ---
 
     # 2. Chờ VM sẵn sàng (sẽ thêm logic kiểm tra ở đây)
     logging.info("Waiting for VMware Tools to be ready (up to 120 seconds)...")
@@ -257,8 +255,6 @@ def run_single_test(vm_name, payload_path, build_options):
 
     logging.info("Collecting logs...")    
     log_details += "\n\n" + collect_guest_logs(vm_name, vm_info) # Gọi hàm thu thập log mới
-        
-    # --- KẾT THÚC NÂNG CẤP ---
 
     # 8. Cleanup
     logging.info("Stopping VM...")
