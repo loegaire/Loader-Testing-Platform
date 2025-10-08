@@ -1,8 +1,11 @@
 #pragma once
 #include "win_internals.h"
+#include <cstdio>
+#include <minwindef.h>
 #include <windows.h>
-#include <iostream>
+// #include <iostream>
 #include <tlhelp32.h>
+#include <wingdi.h>
 
 // =================================================================
 //                      UTILITY FUNCTIONS
@@ -86,11 +89,10 @@ BOOL IsStringEqual(IN LPCWSTR Str1, IN LPCWSTR Str2) {
 
 HMODULE CustomGetModuleHandle(IN LPCWSTR moduleName) {
 
-#ifdef _WIN64
-    PEB * ProcEnvBlk = (PEB *) __readgsdword(0x60);
-#elif _WIN32
-    PEB * ProcEnvBlk = (PEB *)__readgsqword(0x30);
-#endif
+    // WIN64
+    PEB * ProcEnvBlk = (PEB *) __readgsqword(0x60);
+
+    // printf("[DBG] ProcEnvBlk = %p\n", (void*)ProcEnvBlk);
 
     // return base address of a calling module
     if (moduleName == NULL) 
@@ -101,6 +103,8 @@ HMODULE CustomGetModuleHandle(IN LPCWSTR moduleName) {
     
     ModuleList = &Ldr->InMemoryOrderModuleList;
     LIST_ENTRY *  pStartListEntry = ModuleList->Flink;
+
+    // printf("[DBG] Walk through ListEntry... Start from : %p\n", (void*)pStartListEntry);
 
     for (LIST_ENTRY *  pListEntry  = pStartListEntry;       // start from beginning of InMemoryOrderModuleList
                        pListEntry != ModuleList;            // walk all list entries
@@ -119,7 +123,7 @@ HMODULE CustomGetModuleHandle(IN LPCWSTR moduleName) {
 
 }
 
-FARPROC CustomGetProcProcess(IN HMODULE hMod, IN LPCSTR funcName) {
+FARPROC CustomGetProcAddress(IN HMODULE hMod, IN LPCSTR funcName) {
     
     char * pBaseAddr = (char *) hMod;
 
@@ -170,12 +174,10 @@ FARPROC CustomGetProcProcess(IN HMODULE hMod, IN LPCSTR funcName) {
 // Hàm tìm địa chỉ của stub syscall và lệnh "syscall"
 BOOL FindSyscall(const char* funcName, DWORD& syscallId, PVOID& syscallInstAddr) {
 
-    std::cerr << funcName;
-
     HMODULE hNtdll = CustomGetModuleHandle(L"ntdll.dll");
     if (!hNtdll) return FALSE;
 
-    FARPROC pFunc = CustomGetProcProcess(hNtdll, funcName);
+    FARPROC pFunc = CustomGetProcAddress(hNtdll, funcName);
     if (!pFunc) return FALSE;
 
     BYTE* pByte = (BYTE*)pFunc;
@@ -186,13 +188,19 @@ BOOL FindSyscall(const char* funcName, DWORD& syscallId, PVOID& syscallInstAddr)
         // Lấy Syscall ID
         syscallId = *(DWORD*)(pByte + 4);
 
+        // printf("[FindSyscall] Found syscall ID of %s: 0x%x\n", funcName, syscallId);
+
         // Tìm lệnh "syscall" (0F 05) trong 32 byte tiếp theo
+        if (syscallInstAddr != NULL) {
+            return TRUE;
+        }
         for (int i = 0; i < 32; ++i) {
             if (pByte[i] == 0x0F && pByte[i + 1] == 0x05) {
                 syscallInstAddr = (PVOID)(pByte + i);
                 return TRUE;
             }
         }
+        return TRUE;
     }
     return FALSE;
 }
