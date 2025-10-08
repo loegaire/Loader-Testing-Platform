@@ -1,26 +1,51 @@
 .PHONY: build clean
 
-# Trình biên dịch C++ (cross-compiler cho Windows)
+# --- Trình biên dịch & Assembler ---
+# CC: Trình biên dịch C++ (MinGW)
+# AS: Assembler (NASM)
 CC = x86_64-w64-mingw32-g++
+AS = nasm
 
-# Các cờ biên dịch: -s (strip symbols), -O2 (tối ưu hóa), -Wall (hiển thị cảnh báo)
-# -lws2_32: Link thư viện Windows Sockets
-# -Wno-write-strings: Tắt cảnh báo khi gán chuỗi ký tự cho char* (hữu ích cho key)
-CFLAGS = -s -O2 -Wall -Isrc -lws2_32 -Wno-write-strings
-
-# Thư mục
-SRC_DIR = build
+# --- Thư mục ---
+SRC_DIR = src
+BUILD_DIR = build
+OBJ_DIR = build/obj
 OUT_DIR = output
 
-# Target mặc định
-all:
-	@echo "Usage: make build SRC=<source_file> OUT=<output_file>"
+# --- Cờ biên dịch & Lắp ráp ---
+CFLAGS = -s -O2 -Wall -I$(SRC_DIR) -lws2_32 -Wno-write-strings -ffunction-sections -fdata-sections $(DEFINES) -static-libgcc -static-libstdc++
+ASFLAGS = -f win64
+LDFLAGS = -Wl,--gc-sections
 
-# Target để build payload
-build:
-	$(CC) $(SRC_DIR)/$(SRC) -o $(OUT_DIR)/$(OUT) $(CFLAGS)
-	@echo " [+] Payload built successfully: $(OUT_DIR)/$(OUT)"
+# --- Định nghĩa các file Object ---
+CPP_OBJ = $(OBJ_DIR)/$(patsubst %.cpp,%.obj,$(SRC))
+ASM_OBJ = $(OBJ_DIR)/syscall.obj
+OBJS = $(CPP_OBJ) $(ASM_OBJ)
 
-# Target để dọn dẹp
+# --- Các quy tắc (Rules) ---
+
+# Target chính: build một file exe cụ thể
+# Ví dụ: make build SRC=generated_loader.cpp OUT=payload.exe
+build: $(OUT_DIR)/$(OUT)
+
+# Quy tắc để liên kết các file object thành file exe cuối cùng
+$(OUT_DIR)/$(OUT): $(OBJS)
+	@echo " [LD] Linking object files into $(@)..."
+	$(CC) -o $@ $^ $(LDFLAGS)
+
+# Quy tắc để biên dịch file .cpp được tạo ra thành .obj
+$(OBJ_DIR)/%.obj: $(BUILD_DIR)/%.cpp
+	@echo " [CXX] Compiling $(<) to $(@)..."
+	@mkdir -p $(OBJ_DIR)
+	$(CC) -c -o $@ $< $(CFLAGS)
+
+# Quy tắc để lắp ráp file .asm thành .obj
+$(OBJ_DIR)/syscall.obj: $(SRC_DIR)/api/syscall.asm
+	@echo " [ASM] Assembling $(<) to $(@)..."
+	@mkdir -p $(OBJ_DIR)
+	$(AS) $(ASFLAGS) $< -o $@
+
+# Clean target
 clean:
-	rm -f $(OUT_DIR)/* $(SRC_DIR)/*
+	@echo " [CLEAN] Removing build artifacts..."
+	rm -rf $(OUT_DIR)/* $(BUILD_DIR)/* $(OBJ_DIR)/*

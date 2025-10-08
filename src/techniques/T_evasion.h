@@ -1,14 +1,36 @@
 #pragma once
-#include <windows.h>
+#include "../core/win_internals.h"
 
-// Hàm kiểm tra sandbox bằng cách đo thời gian Sleep
-BOOL IsSandboxed_Sleep() {
-    DWORD start = GetTickCount();
-    Sleep(2000); // Yêu cầu ngủ 2 giây
-    DWORD end = GetTickCount();
-    // Nếu thời gian trôi qua ít hơn 1.5 giây, có thể sandbox đã tua nhanh hàm Sleep
-    if ((end - start) < 1500) {
-        return TRUE;
-    }
-    return FALSE;
-}
+// // EV1: Check BeingDebugged flag in PEB
+// BOOL IsDebugged() {
+//     PPEB pPeb = GetPeb();
+//     if (pPeb->BeingDebugged) {
+//         return TRUE;
+//     }
+//     return FALSE;
+// }
+
+// // EV3: Check for low RAM (common in sandboxes)
+// BOOL IsSandboxed_LowRam() {
+//     MEMORYSTATUSEX statex;
+//     statex.dwLength = sizeof(statex);
+//     GlobalMemoryStatusEx(&statex);
+//     // Less than 4GB RAM is suspicious
+//     if ((statex.ullTotalPhys / 1024 / 1024) < 4096) {
+//         return TRUE;
+//     }
+//     return FALSE;
+// }
+
+// // EV4: Check for Sleep acceleration
+// BOOL IsSandboxed_Sleep() {
+//     DWORD startTime = GetTickCount();
+//     Sleep(3000); // Request a 3-second sleep
+//     DWORD endTime = GetTickCount();
+//     // If the sleep duration was less than 2.5 seconds, it was likely accelerated.
+//     if ((endTime - startTime) < 2500) {
+//         return TRUE;
+//     }
+//     return FALSE;
+// }
+

