@@ -1,260 +1,234 @@
-# Nền tảng Tự động hóa Kiểm thử Payload FUD
-*(Automated Payload FUD Testing Platform – Research Only)*
+Here is the English translation of your repository documentation, formatted as a **README.md** file suitable for GitHub.
 
-## 🎯 Mục tiêu Đồ án
-Đây là một dự án **nghiên cứu – giáo dục** nhằm xây dựng một **nền tảng tự động hóa** để kiểm thử và đánh giá hiệu quả của các **kỹ thuật lẩn tránh (evasion techniques)** được sử dụng trong **shellcode loader**.
+-----
 
-Mục tiêu chính:
-1.  **Đánh giá khả năng phát hiện** của các giải pháp **Antivirus (AV)** và **Endpoint Detection & Response (EDR)** đối với nhiều kỹ thuật mã hóa (encryption) và nạp mã (injection).
-2.  Cung cấp **bảng điều khiển (dashboard)** giúp **Red Team** nhanh chóng thử nghiệm kỹ thuật lẩn tránh và giúp **Blue Team** thu thập log, phân tích hành vi.
+# Automated FUD Payload Testing Platform
 
-> ⚠️ **Cảnh báo:** Công cụ chỉ phục vụ **mục đích nghiên cứu và đào tạo** trong **môi trường lab cô lập**.
-> Không sử dụng cho bất kỳ hoạt động tấn công trái phép nào.
+*(Research & Education Only)*
 
----
+## 🎯 Project Goals
 
-## 💡 Lợi ích cho Red Team và Blue Team
--   **Đối với Red Team**
-    -   Cho phép thử nghiệm nhanh nhiều kỹ thuật **obfuscation, injection** trên cùng một shellcode.
-    -   Đo lường mức độ thành công của từng kỹ thuật để tối ưu chiến thuật **bypass AV/EDR**.
--   **Đối với Blue Team**
-    -   Tự động thu thập log cảnh báo và phân tích hành vi thực tế của các loader.
-    -   Cải thiện khả năng phát hiện, điều chỉnh chính sách giám sát và signature.
+This is a **research and educational** project designed to build an **automated platform** for testing and evaluating the effectiveness of **evasion techniques** used in **shellcode loaders**.
 
----
+**Key Objectives:**
 
-## 🏗️ Kiến trúc Hệ thống
-Hệ thống được thiết kế theo mô hình **Dashboard nội bộ**, gồm 4 thành phần chính:
+1.  **Evaluate detection capabilities** of **Antivirus (AV)** and **Endpoint Detection & Response (EDR)** solutions against various encryption and injection techniques.
+2.  Provide a **dashboard** that helps **Red Teams** quickly test evasion techniques and assists **Blue Teams** in collecting logs and analyzing behavior.
+
+> ⚠️ **Warning:** This tool is strictly for **research and training purposes** within an **isolated lab environment**. Do not use it for any unauthorized offensive activities.
+
+-----
+
+## 💡 Benefits for Red & Blue Teams
+
+  * **For Red Teams:**
+      * Rapidly test multiple **obfuscation and injection** techniques on the same shellcode.
+      * Measure the success rate of specific techniques to optimize **AV/EDR bypass** tactics.
+  * **For Blue Teams:**
+      * Automate the collection of alert logs and analyze the actual behavior of loaders.
+      * Improve detection capabilities and tune monitoring policies and signatures.
+
+-----
+
+## 🏗️ System Architecture
+
+The system operates as an **Internal Dashboard**, consisting of 4 main components:
 
 ```
 [Web Dashboard] → [Core Engine] → [Loader Builder] → [VMware VMs]
 ```
 
-| Thành phần | Vai trò |
+| Component | Role |
 | :--- | :--- |
-| **Giao diện Web (Frontend)** | Giao diện Flask, chạy local, cho phép tải shellcode, chọn kỹ thuật, chọn VM. |
-| **Core Engine** | Module Python (`core_engine.py`) điều phối toàn bộ: build, deploy, thực thi, thu log. |
-| **Loader Builder** | Mã nguồn C++/MinGW-64, đóng gói shellcode + kỹ thuật thành file `.exe`. |
-| **VMware Hypervisor** | Chạy các máy ảo Windows với AV/EDR, cung cấp snapshot để reset trạng thái sạch. |
+| **Web Interface (Frontend)** | Flask-based local UI for uploading shellcode, selecting techniques, and choosing VMs. |
+| **Core Engine** | Python module (`core_engine.py`) that orchestrates the workflow: build, deploy, execute, log. |
+| **Loader Builder** | C++/MinGW-64 source code that packages the shellcode + techniques into an `.exe` file. |
+| **VMware Hypervisor** | Runs target Windows VMs with AV/EDR, providing snapshots for state resets. |
 
----
+-----
 
-## ⚡ Quy trình Làm việc (Workflow)
-1.  **Cấu hình & Tải lên** – Người dùng tải lên file shellcode (`.bin`) và chọn các tùy chọn trên Dashboard.
-2.  **Build Payload** – Core Engine gọi `builder` biên dịch loader C++ thành file thực thi độc nhất.
-3.  **Triển khai & Thực thi** – Payload được tự động đưa vào từng máy ảo và khởi chạy.
-4.  **Thu thập & Báo cáo** – Hệ thống thu thập log phát hiện và trạng thái chạy, sau đó xuất báo cáo trên Dashboard.
+## ⚡ Workflow
 
----
+1.  **Configure & Upload:** User uploads a shellcode file (`.bin`) and selects options via the Dashboard.
+2.  **Build Payload:** The Core Engine calls the `builder` to compile the C++ loader into a unique executable.
+3.  **Deploy & Execute:** The payload is automatically transferred to the selected VMs and executed.
+4.  **Collect & Report:** The system gathers detection logs and execution status, then generates a report on the Dashboard.
 
-## 📂 Cấu trúc Thư mục
+-----
+
+## 📂 Directory Structure
 
 ```
 FUD_Testing_Platform/
-├── app.py              # Backend Flask cho giao diện web
-├── core_engine.py      # Logic chính: build, deploy, log
-├── requirements.txt    # Thư viện Python cần thiết
-├── Makefile            # Cấu hình biên dịch C++
-├── .gitignore          # Bỏ qua các file không cần thiết
-├── src/                # Mã nguồn C++ của loader
-├── templates/          # Giao diện HTML cho Flask
-├── shellcodes/         # Lưu shellcode mẫu
-├── uploads/            # Shellcode do người dùng upload
-├── output/             # Payload .exe sau khi build
-└── test_logs/          # Log kết quả từ các máy ảo
+├── app.py              # Flask Backend for Web UI
+├── core_engine.py      # Main logic: build, deploy, log
+├── requirements.txt    # Python dependencies
+├── Makefile            # C++ compilation configuration
+├── .gitignore          # Ignored files
+├── src/                # C++ loader source code
+├── templates/          # HTML templates for Flask
+├── shellcodes/         # Sample shellcodes
+├── uploads/            # User uploaded shellcodes
+├── output/             # Compiled .exe payloads
+└── test_logs/          # Result logs from VMs
 ```
 
----
+-----
 
-## 🔧 Công nghệ Sử dụng
--   **Python 3.8+** – Flask web dashboard, Core Engine automation.
--   **C++ (MinGW-w64)** – Viết loader, tận dụng Windows API.
--   **HTML/Jinja2** – Xây dựng giao diện người dùng đơn giản.
--   **VMware Workstation/Player** – Quản lý các máy ảo Windows đích.
--   **vmrun CLI** – Điều khiển snapshot, upload file và chạy lệnh trong VM.
+## 🔧 Technologies Used
 
----
+  * **Python 3.8+:** Flask web dashboard, Core Engine automation.
+  * **C++ (MinGW-w64):** Loader development, utilizing Windows APIs.
+  * **HTML/Jinja2:** Simple user interface.
+  * **VMware Workstation/Player:** Manages target Windows VMs.
+  * **vmrun CLI:** Controls snapshots, file uploads, and command execution within VMs.
 
-## ⚙️ Yêu cầu Cài đặt
-1.  **Python 3.8+** và `pip`.
-2.  **VMware Workstation/Player** và công cụ dòng lệnh `vmrun` (đi kèm với cài đặt VMware trên máy Host).
-3.  **MinGW-w64** để biên dịch loader C++.
-4.  **Máy ảo (VMs)**:
-    -   Hệ điều hành Windows (10/11) đã cài **VMware Tools**.
-    -   Cài đặt các **AV/EDR** cần kiểm thử (Defender, SentinelOne, CrowdStrike, OpenEDR…).
-    -   Mỗi VM cần một snapshot tên **`clean_snapshot`** để reset sau mỗi bài test.
-5.  **Dung lượng**: Đề xuất tối thiểu **100 GB** để lưu nhiều VM và snapshot.
+-----
 
----
+## ⚙️ Prerequisites
 
-## 🚀 Hướng dẫn Cài đặt
-1.  **Clone dự án**
+1.  **Python 3.8+** and `pip`.
+2.  **VMware Workstation/Player** and the `vmrun` CLI tool (included with VMware installation).
+3.  **MinGW-w64** for compiling the C++ loader.
+4.  **Virtual Machines (VMs):**
+      * Windows OS (10/11) with **VMware Tools** installed.
+      * Target **AV/EDR** installed (Defender, SentinelOne, CrowdStrike, OpenEDR, etc.).
+      * Each VM must have a snapshot named **`clean_snapshot`** to reset state after tests.
+5.  **Storage:** Minimum **100 GB** recommended to store multiple VMs and snapshots.
+
+-----
+
+## 🚀 Installation Guide
+
+1.  **Clone the repository:**
     ```bash
     git clone <your-repo-url>
     cd FUD_Testing_Platform
     ```
-2.  **Tạo môi trường ảo và cài thư viện**
+2.  **Create virtual environment and install dependencies:**
     ```bash
     python -m venv venv
-    .\venv\Scripts\activate   # Trên Windows
+    .\venv\Scripts\activate   # On Windows
     pip install -r requirements.txt
     ```
-3.  **Cấu hình máy ảo**
-    -   Chuẩn bị các máy ảo Windows và snapshot như mô tả ở trên.
-    -   Cập nhật đường dẫn `.vmx` và thông tin đăng nhập trong `core_engine.py` hoặc file config riêng.
-    -   Vô hiệu hóa tính năng **Sample Submission** trong AV để tránh gửi payload ra ngoài.
+3.  **Configure Virtual Machines:**
+      * Prepare Windows VMs and snapshots as described above.
+      * Update `.vmx` paths and login credentials in `core_engine.py` or a separate config file.
+      * **Disable "Sample Submission"** in the AV to prevent leaking payloads.
 
----
+-----
 
-## 💻 Cách Sử dụng
-1.  **Khởi động Dashboard**
+## 💻 Usage
+
+1.  **Start the Dashboard:**
     ```bash
     python app.py
     ```
-    Mở trình duyệt và truy cập: [http://127.0.0.1:5000](http://127.0.0.1:5000)
-2.  **Trên giao diện:**
-    -   Upload file shellcode `.bin`.
-    -   Chọn kỹ thuật mã hóa & injection mong muốn.
-    -   Chọn danh sách máy ảo để kiểm thử.
-    -   Nhấn **Run Test**.
-3.  **Xem kết quả:**
-    -   Dashboard sẽ hiển thị trạng thái (SUCCESS/FAILED) và log chi tiết của từng môi trường.
-    -   Log cũng được lưu vào thư mục `test_logs/` để phân tích sau.
+    Open your browser and navigate to: [http://127.0.0.1:5000](http://127.0.0.1:5000)
+2.  **On the Interface:**
+      * Upload a `.bin` shellcode file.
+      * Select encryption & injection techniques.
+      * Select the target VMs.
+      * Click **Run Test**.
+3.  **View Results:**
+      * The Dashboard will display the status (SUCCESS/FAILED) and detailed logs for each environment.
+      * Logs are also saved in the `test_logs/` directory for later analysis.
 
----
+-----
 
-## 📅 Lộ trình Phát triển (Roadmap)
+## 📅 Roadmap
 
-Dự án được chia thành các giai đoạn chính, tập trung vào việc xây dựng nền tảng, nghiên cứu kỹ thuật, và mở rộng khả năng phân tích.
+The project is divided into key phases, focusing on platform foundation, technique research, and advanced analysis.
 
----
+### ✅ Phase 1: Platform Foundation (Completed)
 
-### ✅ **Giai đoạn 1: Xây dựng Nền tảng Tự động hóa (Đã hoàn thành)**
+This phase focused on building the core framework and automation pipeline.
 
-Giai đoạn này tập trung vào việc xây dựng bộ khung và quy trình tự động hóa cốt lõi. Các công việc đã hoàn thành bao gồm:
+  * **Control Engine (`core_engine.py`):** Logic for `vmrun` management (revert, start, stop), payload building, and a simple C2 Listener.
+  * **CLI (`cli.py`):** Command-line interface for flexible testing configuration.
+  * **Basic Loader (C++):** Implemented **XOR Encryption** and **Classic Injection (`CreateThread`)**.
+  * **Initial Lab Environment:** Configured **Windows Defender** + **Sysmon** with automated log collection scripts.
+  * **Pipeline Automation:** Fully automated chain: **Build → Revert VM → Start VM → Deploy → Execute → Collect Logs → Report**.
 
-*   **Phát triển Engine Điều khiển (`core_engine.py`):**
-    -   Xây dựng logic điều khiển `vmrun` để quản lý máy ảo (revert, start, stop).
-    -   Tích hợp chức năng build payload tự động.
-    -   Xây dựng C2 Listener đơn giản để xác nhận kết quả.
+### 🚀 Phase 2: Technique Research & Lab Expansion (Next Steps)
 
-*   **Xây dựng Giao diện Dòng lệnh (`cli.py`):**
-    -   Tạo giao diện CLI cho phép người dùng cấu hình và chạy các bài test một cách linh hoạt.
+Focuses on developing and evaluating new evasion techniques.
 
-*   **Phát triển Loader Cơ bản (C++):**
-    -   Cài đặt kỹ thuật mã hóa cơ bản: **XOR Encryption**.
-    -   Cài đặt kỹ thuật nạp mã cơ bản: **Classic Injection (`CreateThread`)**.
+  * **🔬 Evasion Technique R\&D:**
+      * **Encryption:** Integrate **AES-256**.
+      * **Injection:** Implement **Process Hollowing** and **APC Injection**.
+      * **Anti-Analysis:** Implement **Anti-Sandbox** (RAM/CPU checks, `Sleep`) and **API Hashing**.
+  * **🧪 Lab Expansion:**
+      * Configure a VM with a **third-party EDR** (e.g., SentinelOne, Bitdefender).
+      * Develop custom log collection scripts for the new EDR environment.
+  * **🖥️ UI/UX Development:**
+      * Build a basic Flask **Web Dashboard** for configuration.
+      * Design a results page for visual data presentation.
 
-*   **Xây dựng Môi trường Lab Ban đầu:**
-    -   Thiết lập máy ảo **Windows Defender** với cấu hình chuẩn.
-    -   Cài đặt và cấu hình **Sysmon** để ghi log hành vi chi tiết.
-    -   Phát triển script thu thập log tự động cho môi trường Defender & Sysmon.
+### 🌟 Phase 3: Advanced Analysis (Long-term Vision)
 
-*   **Hoàn thiện Quy trình Tự động (Pipeline):**
-    -   Tự động hóa thành công toàn bộ chuỗi: **Build → Revert VM → Start VM → Deploy → Execute → Collect Logs → Report**.
+Focuses on actionable insights and platform maturity.
 
----
+  * **📊 Analysis & Reporting:**
+      * Enhance log collection for granular event details.
+      * Build a **rule-based analysis engine** to identify behavior patterns.
+      * Data visualization (charts comparing technique effectiveness).
+  * **🖥️ Platform Upgrades:**
+      * Real-time progress tracking via AJAX/JS.
+      * History management to compare past test results.
 
-### 🚀 **Giai đoạn 2: Nghiên cứu Kỹ thuật & Mở rộng Lab (Các bước tiếp theo)**
+-----
 
-Giai đoạn này tập trung vào mục tiêu nghiên cứu chính của đồ án: phát triển và đánh giá các kỹ thuật lẩn tránh mới.
+## 🔒 Scope & Limitations
 
-*   **🔬 Nghiên cứu & Phát triển Kỹ thuật Lẩn tránh:**
-    -   **Mã hóa (Encryption):**
-        -   Tích hợp mã hóa **AES-256** (sử dụng thư viện C++ hoặc tự triển khai).
-    -   **Nạp mã (Injection):**
-        -   Triển khai kỹ thuật **Process Hollowing**.
-        -   Triển khai kỹ thuật **APC Injection**.
-    -   **Lẩn tránh Phân tích (Evasion & Anti-Analysis):**
-        -   Cài đặt các kỹ thuật **Anti-Sandbox** (kiểm tra RAM, CPU, thời gian `Sleep`).
-        -   Tích hợp **API Hashing** để che giấu các lệnh gọi Windows API nhạy cảm.
+  * All testing is performed **strictly within an internal environment**.
+  * Generated payloads **must not be distributed** to the Internet.
+  * This is **not an attack tool**; it serves only defensive research (Blue Team) and testing (Red Team) purposes.
 
-*   **🧪 Mở rộng Môi trường Lab:**
-    -   Xây dựng và cấu hình máy ảo cho ít nhất **một giải pháp EDR của bên thứ ba** (ví dụ: SentinelOne, Bitdefender...).
-    -   Nghiên cứu và phát triển **script thu thập log tùy chỉnh** cho môi trường EDR mới.
+-----
 
-*   **🖥️ Phát triển Nền tảng & Giao diện (UI/UX):**
-    -   Xây dựng **giao diện web (Dashboard)** cơ bản bằng Flask cho phép cấu hình và chạy test.
-    -   Thiết kế trang hiển thị kết quả một cách trực quan (bảng, log có thể thu gọn).
+## References
 
----
+### I. Overview of Evasion & Malware Development
 
-### 🌟 **Giai đoạn 3: Phân tích Nâng cao & Hoàn thiện (Tầm nhìn dài hạn)**
+  * **MITRE ATT\&CK® – Defense Evasion**
+    [https://attack.mitre.org/tactics/TA0005/](https://attack.mitre.org/tactics/TA0005/)
+    The definitive knowledge base for attack tactics. The *Defense Evasion* section is essential reading.
+  * **ired.team – Code Injection**
+    [https://www.ired.team/offensive-security/code-injection-process-injection](https://www.ired.team/offensive-security/code-injection-process-injection)
+    Comprehensive collection of code injection techniques with concise examples.
+  * **Windows Internals, Part 2 – Mark Russinovich et al.**
+    Deep dive into how Windows manages processes, threads, memory, and APC queues.
 
-Giai đoạn cuối cùng tập trung vào việc biến dữ liệu thu thập được thành các thông tin hữu ích và hoàn thiện công cụ.
+### II. Injection Techniques
 
-*   **📊 Phân tích & Báo cáo Dữ liệu:**
-    -   Nâng cấp module thu thập log để lấy được các sự kiện chi tiết hơn (ví dụ: từ các kênh Event Log khác).
-    -   Xây dựng một **engine phân tích log dựa trên quy tắc (rule-based)** để tự động nhận diện các mẫu hành vi và cảnh báo tương ứng.
-    -   Trực quan hóa dữ liệu (ví dụ: biểu đồ so sánh hiệu quả của các kỹ thuật trên từng AV).
+  * **Process Hollowing – A Technical Analysis**
+    [https://www.elastic.co/blog/a-technical-analysis-of-process-hollowing](https://www.elastic.co/blog/a-technical-analysis-of-process-hollowing)
+    Step-by-step analysis of creating suspended processes and overwriting memory.
+  * **Asynchronous Procedure Calls (APC) Injection**
+    [https://www.ired.team/offensive-security/code-injection-process-injection/apc-injection-for-dll-injection](https://www.ired.team/offensive-security/code-injection-process-injection/apc-injection-for-dll-injection)
+    Explains abusing thread APC queues for indirect code execution.
+  * **Microsoft Documentation (Classic Injection)**
+      * [CreateRemoteThread](https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createremotethread)
+      * [VirtualAllocEx](https://docs.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualallocex)
 
-*   **🖥️ Nâng cấp Nền tảng & Giao diện:**
-    -   Cải thiện Dashboard với khả năng **hiển thị tiến trình test theo thời gian thực** (sử dụng AJAX/JavaScript).
-    -   Thêm chức năng quản lý, xem lại và so sánh kết quả của các lần test cũ.
+### III. Obfuscation & Evasion
 
----
+  * **API Hashing – Maldev Academy**
+    [https://maldevacademy.com/posts/api-hashing/](https://maldevacademy.com/posts/api-hashing/)
+    Detailed guide on API Hashing to avoid IAT hooking and static analysis.
+  * **Anti-Sandbox & Anti-Analysis Techniques**
+    [The Ultimate Anti-Reversing Reference (PDF)](https://anti-reversing.com/Downloads/Anti-Reversing/The_Ultimate_Anti-Reversing_Reference.pdf)
+    Extensive list of techniques to detect debuggers, VMs, and sandboxes.
+  * **Advanced Encryption Standard (AES) – FIPS 197**
+    [https://nvlpubs.nist.gov/nistpubs/fips/nist.fips.197.pdf](https://nvlpubs.nist.gov/nistpubs/fips/nist.fips.197.pdf)
 
-## 🔒 Phạm vi & Giới hạn
--   Toàn bộ thử nghiệm **chỉ được thực hiện trên môi trường nội bộ**.
--   Payload được sinh ra **không được phát tán ra Internet**.
--   Đây **không phải công cụ tấn công**, chỉ phục vụ nghiên cứu cho mục đích phòng thủ (Blue Team) và kiểm thử (Red Team).
+### IV. Monitoring & Logging (Sysmon)
 
-## Tài liệu Tham khảo
-
-### I. Tổng quan về Kỹ thuật Lẩn tránh & Phát triển Mã độc
-- **MITRE ATT&CK® – Defense Evasion**  
-  [https://attack.mitre.org/tactics/TA0005/](https://attack.mitre.org/tactics/TA0005/)  
-  *"Tàng thư” về các chiến thuật và kỹ thuật tấn công*. Phần *Defense Evasion* mô tả chi tiết hầu hết các kỹ thuật như Process Injection, Obfuscation,… Đây là nguồn tham khảo nền tảng bắt buộc.
-
-- **ired.team – Code Injection**  
-  [https://www.ired.team/offensive-security/code-injection-process-injection](https://www.ired.team/offensive-security/code-injection-process-injection)  
-  Trang tổng hợp nhiều kỹ thuật code injection với ví dụ ngắn gọn, giúp có cái nhìn toàn diện về các phương pháp nạp mã.
-
-- **Windows Internals, Part 2 – Mark Russinovich et al.**   
-  Cung cấp kiến thức sâu về cách Windows quản lý tiến trình, luồng, bộ nhớ và APC queue – nền tảng để hiểu cơ chế của các kỹ thuật injection.
-
----
-
-### II. Kỹ thuật Nạp mã (Injection Techniques)
-- **Process Hollowing – A Technical Analysis**  
-  [https://www.elastic.co/blog/a-technical-analysis-of-process-hollowing](https://www.elastic.co/blog/a-technical-analysis-of-process-hollowing)  
-  Phân tích chi tiết từng bước Process Hollowing: tạo tiến trình ở trạng thái *suspend*, ghi đè bộ nhớ, và thực thi mã độc.
-
-- **Asynchronous Procedure Calls (APC) Injection**  
-  [https://www.ired.team/offensive-security/code-injection-process-injection/apc-injection-for-dll-injection](https://www.ired.team/offensive-security/code-injection-process-injection/apc-injection-for-dll-injection)  
-  Giải thích rõ cách lợi dụng hàng đợi APC của luồng để thực thi mã một cách gián tiếp.
-
-- **Tài liệu gốc từ Microsoft (Classic Injection)**  
-  - [CreateRemoteThread](https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createremotethread)  
-  - [VirtualAllocEx](https://docs.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualallocex)  
-  Trích dẫn trực tiếp từ Microsoft, minh họa cách sử dụng API cho việc tiêm mã kinh điển.
-
----
-
-### III. Kỹ thuật Che giấu & Lẩn tránh (Obfuscation & Evasion)
-- **API Hashing – Maldev Academy**  
-  [https://maldevacademy.com/posts/api-hashing/](https://maldevacademy.com/posts/api-hashing/)  
-  Hướng dẫn chi tiết về API Hashing, lý do sử dụng (tránh IAT hooking, phân tích tĩnh) và cách triển khai trong C++.
-
-- **Anti-Sandbox & Anti-Analysis Techniques**  
-  [The Ultimate Anti-Reversing Reference (PDF)](https://anti-reversing.com/Downloads/Anti-Reversing/The_Ultimate_Anti-Reversing_Reference.pdf)  
-  Tài liệu toàn diện liệt kê hàng trăm kỹ thuật chống gỡ lỗi, chống máy ảo và chống sandbox.
-
-- **Advanced Encryption Standard (AES) – FIPS 197**  
-  [https://nvlpubs.nist.gov/nistpubs/fips/nist.fips.197.pdf](https://nvlpubs.nist.gov/nistpubs/fips/nist.fips.197.pdf)  
-  Tiêu chuẩn chính thức của NIST định nghĩa về AES – nguồn học thuật quan trọng khi triển khai mã hóa.
-
----
-
-### IV. Giám sát, Phát hiện & Ghi Log (Sysmon)
-- **Sysmon – Microsoft Sysinternals**  
-  [https://docs.microsoft.com/en-us/sysinternals/downloads/sysmon](https://docs.microsoft.com/en-us/sysinternals/downloads/sysmon)  
-  Trang tài liệu gốc mô tả công cụ Sysmon và các Event ID liên quan.
-
-- **Sysmon Configuration Project – SwiftOnSecurity**  
-  [https://github.com/SwiftOnSecurity/sysmon-config](https://github.com/SwiftOnSecurity/sysmon-config)  
-  Repo cấu hình Sysmon nổi tiếng trong cộng đồng, được sử dụng rộng rãi cho hunting và detection.
-
-- **SANS DFIR – Sysmon Cheatsheet**  
-  [https://www.sans.org/posters/sysmon-threat-hunting-cheatsheet/](https://www.sans.org/posters/sysmon-threat-hunting-cheatsheet/)  
-  Poster/cheatsheet tóm tắt ý nghĩa từng Event ID và liên kết với các hành vi tấn công, rất hữu ích cho phân tích log.
+  * **Sysmon – Microsoft Sysinternals**
+    [https://docs.microsoft.com/en-us/sysinternals/downloads/sysmon](https://docs.microsoft.com/en-us/sysinternals/downloads/sysmon)
+  * **Sysmon Configuration Project – SwiftOnSecurity**
+    [https://github.com/SwiftOnSecurity/sysmon-config](https://github.com/SwiftOnSecurity/sysmon-config)
+    Widely used configuration repo for hunting and detection.
+  * **SANS DFIR – Sysmon Cheatsheet**
+    [https://www.sans.org/posters/sysmon-threat-hunting-cheatsheet/](https://www.sans.org/posters/sysmon-threat-hunting-cheatsheet/)
