@@ -1,36 +1,40 @@
 #pragma once
 #include "../core/win_internals.h"
+#include "../core/utils.h"
 
-// // EV1: Check BeingDebugged flag in PEB
-// BOOL IsDebugged() {
-//     PPEB pPeb = GetPeb();
-//     if (pPeb->BeingDebugged) {
-//         return TRUE;
-//     }
-//     return FALSE;
-// }
+#ifdef DEBUG_MODE
+    #define DEBUG_MSG(title, msg) MessageBoxA(NULL, msg, title, MB_OK | MB_ICONINFORMATION)
+#else
+    #define DEBUG_MSG(title, msg)
+#endif
 
-// // EV3: Check for low RAM (common in sandboxes)
-// BOOL IsSandboxed_LowRam() {
-//     MEMORYSTATUSEX statex;
-//     statex.dwLength = sizeof(statex);
-//     GlobalMemoryStatusEx(&statex);
-//     // Less than 4GB RAM is suspicious
-//     if ((statex.ullTotalPhys / 1024 / 1024) < 4096) {
-//         return TRUE;
-//     }
-//     return FALSE;
-// }
+// --- CÁC HÀM KIỂM TRA LẺ (Primitives) ---
 
-// // EV4: Check for Sleep acceleration
-// BOOL IsSandboxed_Sleep() {
-//     DWORD startTime = GetTickCount();
-//     Sleep(3000); // Request a 3-second sleep
-//     DWORD endTime = GetTickCount();
-//     // If the sleep duration was less than 2.5 seconds, it was likely accelerated.
-//     if ((endTime - startTime) < 2500) {
-//         return TRUE;
-//     }
-//     return FALSE;
-// }
+BOOL Check_Sleep_Acceleration() {
+    // ... code kiểm tra Sleep ...
+    return FALSE; // Giả sử an toàn
+}
 
+BOOL Check_Low_Resources() {
+    // ... code kiểm tra RAM/CPU ...
+    return FALSE; 
+}
+
+// --- STAGE 0 COMPOSITE (Hàm tổng hợp) ---
+
+BOOL Stage0_Environment_Check() {
+    DEBUG_MSG("Stage 0", "Checking environment safety...");
+
+    if (Check_Sleep_Acceleration()) {
+        DEBUG_MSG("Stage 0 [FAIL]", "Sandbox detected (Sleep Patching)!");
+        return FALSE;
+    }
+
+    if (Check_Low_Resources()) {
+        DEBUG_MSG("Stage 0 [FAIL]", "Sandbox detected (Low Specs)!");
+        return FALSE;
+    }
+
+    DEBUG_MSG("Stage 0 [PASS]", "Environment looks clean.");
+    return TRUE;
+}

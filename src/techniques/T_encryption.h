@@ -1,11 +1,15 @@
 #pragma once
+#include "T_storage.h"
 #include <windows.h>
 #include <string.h>
 
-void Decrypt_XOR(unsigned char* data, int data_len, const char* key) {
-    int key_len = strlen(key);
-    for (int i = 0; i < data_len; i++) {
-        data[i] = data[i] ^ key[i % key_len];
+void Stage3_Decrypt_XOR(PayloadInfo* payload) {
+    // In-place decryption
+    int key_len = 0;
+    while (payload->key[key_len] != '\0') key_len++;
+
+    for (int i = 0; i < payload->length; i++) {
+        // Truy cập thông qua con trỏ payload->
+        payload->data[i] = payload->data[i] ^ payload->key[i % key_len];
     }
 }
-
