@@ -1,5 +1,5 @@
 #pragma once
-#include "core/win_internals.h"
+#include "../core/win_internals.h"
 
 // Các biến toàn cục để lưu trữ thông tin syscall động
 // Chúng sẽ được khởi tạo một lần duy nhất trong hàm main()
