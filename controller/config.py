@@ -26,7 +26,7 @@ LISTENER_PORT = 4444
 VMS_CONFIG = {
     "Windows Defender": {
         "vmx_path": r"C:\Users\Duy\Documents\Virtual_Machines\Windows_11_01.vmx",
-        "log_collector_host": os.path.join(CONTROLLER_DIR, "log_collectors", "collect_defender.ps1")
+        "log_collector_host": os.path.join(PROJECT_ROOT, "log_collectors", "collect_defender.ps1")
     },
     # Thêm VM khác vào đây
 }
