@@ -18,4 +18,4 @@ __pycache__/
 .vscode/
 .idea/
 /build
-/build
+/build/generated_loader.cpp
