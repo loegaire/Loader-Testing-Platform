@@ -15,55 +15,77 @@ class Colors:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
 
-# --- IMPORTS ---
+# --- SETUP PATH & IMPORTS ---
+# Thêm thư mục hiện tại vào sys.path để Python nhận diện package 'controller'
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 try:
     from controller import core_engine
     from controller.config import VMS_CONFIG, PROJECT_ROOT, OUTPUT_DIR, BUILD_DIR, LOGS_DIR
 except ImportError as e:
     print(f"{Colors.FAIL}[!] Error importing modules: {e}{Colors.ENDC}")
+    print(f"{Colors.WARNING}Ensure you are running 'python cli.py' from the project root and that 'controller/__init__.py' exists.{Colors.ENDC}")
     sys.exit(1)
 
+
 def print_pipeline_banner(options, shellcode_path):
-    """Hiển thị cấu hình dưới dạng 5 Stages"""
+    """Hiển thị cấu hình dưới dạng 6 Stages"""
     
-    # Chuẩn bị dữ liệu hiển thị
+    # --- Lấy thông tin ---
     s0_status = f"{Colors.GREEN}[ ENABLED ]{Colors.ENDC}" if options.get('anti_evasion') else f"{Colors.WARNING}[ DISABLED ]{Colors.ENDC}"
-    
-    s1_method = ".rdata (Embedded Variable)" # Hiện tại hardcode, sau này lấy từ options
-    
+    s1_method = ".rdata (Embedded Variable)"
     s3_algo = options.get('encryption').upper()
     s3_color = Colors.GREEN if s3_algo != "NONE" else Colors.FAIL
     
+    # API Mode ảnh hưởng đến Allocation (S2), Writing (S4), Execution (S5)
     api_mode = options.get('api_method').upper()
     api_color = Colors.CYAN if "SYSCALL" in api_mode else (Colors.WARNING if "INDIRECT" in api_mode else Colors.FAIL)
     
     inj_tech = options.get('injection').upper()
-    
+    # Xác định Writing method dựa trên Injection technique
+    if "HOLLOWING" in inj_tech:
+        s2_alloc = "Remote (VirtualAllocEx)"
+        s4_write = "Remote (WriteProcessMemory)"
+        s5_exec  = "Thread Hijacking"
+    else:
+        s2_alloc = "Local (VirtualAlloc)"
+        s4_write = "Local (RtlMoveMemory)"
+        s5_exec  = "Local (CreateThread)"
+
     sc_name = os.path.basename(shellcode_path)
 
-    print(f"\n{Colors.BOLD}{Colors.HEADER}=== EVASION ENGINEERING PIPELINE CONFIGURATION ==={Colors.ENDC}")
+    print(f"\n{Colors.BOLD}{Colors.HEADER}=== EVASION ENGINEERING PIPELINE (6-STAGE MODEL) ==={Colors.ENDC}")
     print(f"Payload Source: {Colors.CYAN}{sc_name}{Colors.ENDC}")
     print("│")
     
     # STAGE 0
     print(f"├── {Colors.BOLD}Stage 0: Anti-Analysis{Colors.ENDC}")
-    print(f"│   └── Checks: {s0_status}")
+    print(f"│   └── Checks:       {s0_status}")
     print("│")
     
-    # STAGE 1 & 3 (Static Defense)
-    print(f"├── {Colors.BOLD}Stage 1 & 3: Storage & Transformation{Colors.ENDC}")
-    print(f"│   ├── Storage:      {s1_method}")
-    print(f"│   └── Encryption:   {s3_color}{s3_algo}{Colors.ENDC}")
+    # STAGE 1
+    print(f"├── {Colors.BOLD}Stage 1: Storage{Colors.ENDC}")
+    print(f"│   └── Location:     {s1_method}")
+    print("│")
+
+    # STAGE 2
+    print(f"├── {Colors.BOLD}Stage 2: Allocation{Colors.ENDC} {api_color}[{api_mode}]{Colors.ENDC}")
+    print(f"│   └── Strategy:     {s2_alloc}")
+    print("│")
+
+    # STAGE 3
+    print(f"├── {Colors.BOLD}Stage 3: Transformation{Colors.ENDC}")
+    print(f"│   └── Algorithm:    {s3_color}{s3_algo}{Colors.ENDC}")
+    print("│")
+
+    # STAGE 4
+    print(f"├── {Colors.BOLD}Stage 4: Writing{Colors.ENDC} {api_color}[{api_mode}]{Colors.ENDC}")
+    print(f"│   └── Method:       {s4_write}")
     print("│")
     
-    # API LAYER
-    print(f"├── {Colors.BOLD}Abstraction Layer: API Obfuscation{Colors.ENDC}")
-    print(f"│   └── Method:       {api_color}{api_mode}{Colors.ENDC}")
-    print("│")
-    
-    # STAGE 2 & 4 (Dynamic Execution)
-    print(f"└── {Colors.BOLD}Stage 2 & 4: Allocation & Execution{Colors.ENDC}")
-    print(f"    └── Technique:    {Colors.GREEN}{inj_tech}{Colors.ENDC}")
+    # STAGE 5
+    print(f"└── {Colors.BOLD}Stage 5: Execution{Colors.ENDC} {api_color}[{api_mode}]{Colors.ENDC}")
+    print(f"    └── Technique:    {Colors.GREEN}{s5_exec}{Colors.ENDC}")
     print("")
 
 def main():
@@ -86,7 +108,6 @@ def main():
     # --- STAGE 1 & 3 ---
     grp_s3 = parser.add_argument_group(f'{Colors.CYAN}Stage 1 & 3: Storage & Transformation{Colors.ENDC}')
     grp_s3.add_argument("-e", "--encryption", default="none", choices=["none", "xor", "aes"], help="Payload encryption algorithm.")
-    # (Sau này thêm --storage-method vào đây)
 
     # --- STAGE 2 & 4 ---
     grp_s24 = parser.add_argument_group(f'{Colors.CYAN}Stage 2 & 4: Allocation & Execution{Colors.ENDC}')
@@ -103,7 +124,7 @@ def main():
         parser.error("You must specify target VMs with -v/--vms OR use --build-only.")
 
     # --- PREPARE ---
-    # Đường dẫn tuyệt đối
+    # Chuyển đường dẫn tương đối thành tuyệt đối dựa trên PROJECT_ROOT
     if not os.path.isabs(args.shellcode):
         shellcode_path = os.path.join(PROJECT_ROOT, args.shellcode)
     else:
@@ -111,12 +132,9 @@ def main():
 
     build_options = vars(args)
 
-    # --- HIỂN THỊ BANNER ---
+    # --- DISPLAY BANNER ---
     print_pipeline_banner(build_options, shellcode_path)
     
-    # Giả lập thời gian suy nghĩ một chút cho ngầu (optional)
-    # time.sleep(1) 
-
     # --- BUILD ---
     payload_path = core_engine.build_payload(shellcode_path, build_options)
 
@@ -132,12 +150,13 @@ def main():
     # --- TEST ---
     for vm_name in args.vms:
         if vm_name not in VMS_CONFIG:
-            print(f"{Colors.FAIL}[!] Error: VM '{vm_name}' not defined in config.{Colors.ENDC}")
+            print(f"{Colors.FAIL}[!] Error: VM '{vm_name}' not defined in controller/config.py.{Colors.ENDC}")
+            print(f"    Available VMs: {list(VMS_CONFIG.keys())}")
             continue
 
         result = core_engine.run_single_test(vm_name, payload_path, build_options)
         
-        # In báo cáo ngắn gọn
+        # Report
         status = result.get('status', 'UNKNOWN')
         color = Colors.GREEN if "SUCCESS" in status else Colors.FAIL
         
@@ -146,14 +165,20 @@ def main():
         
         if 'FAILED' in status or 'ERROR' in status:
             print(f"{Colors.WARNING}Log Preview:{Colors.ENDC}")
-            # Chỉ in 3 dòng đầu của log để đỡ rối
             logs = result.get('log', '').split('\n')
-            for line in logs[:5]:
-                if line.strip(): print(f"  > {line}")
+            # In tối đa 10 dòng log để preview
+            count = 0
+            for line in logs:
+                if line.strip(): 
+                    print(f"  > {line}")
+                    count += 1
+                if count >= 10: break
             print(f"  > (See full logs in test_logs/)")
 
 if __name__ == "__main__":
+    # Tạo các thư mục output nếu chưa có
     os.makedirs(BUILD_DIR, exist_ok=True)
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     os.makedirs(LOGS_DIR, exist_ok=True)
+    
     main()
