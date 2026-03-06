@@ -3,8 +3,8 @@ import os
 # Paths
 CONTROLLER_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(CONTROLLER_DIR)
-OUTPUT_DIR = os.path.join(PROJECT_ROOT, "output")
-BUILD_DIR = os.path.join(PROJECT_ROOT, "build")
+OUTPUT_DIR = os.path.join(PROJECT_ROOT, 'build', 'bin')
+BUILD_DIR = os.path.join(PROJECT_ROOT, 'build', 'src')
 SHELLCODE_DIR = os.path.join(PROJECT_ROOT, "shellcodes")
 UPLOADS_DIR = os.path.join(PROJECT_ROOT, "uploads")
 LOGS_DIR = os.path.join(PROJECT_ROOT, "test_logs")
