@@ -20,3 +20,4 @@ __pycache__/
 /build
 /build/generated_loader.cpp
 build/generated_loader.cpp
+/tmp
