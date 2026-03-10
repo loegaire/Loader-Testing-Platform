@@ -2,7 +2,6 @@
 #include "../../api/api_wrappers.h"
 #include "../../core/utils.h"
 #include "../context.h"
-#include <winnt.h>
 
 inline BOOL Stage5_Exec_LocalThread(TechniqueContext* ctx)
 {
