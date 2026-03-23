@@ -1,0 +1,858 @@
+% =============================================================================
+% JST Paper — Loader Testing Platform
+% Compile: pdflatex main.tex && bibtex main && pdflatex main.tex && pdflatex main.tex
+% =============================================================================
+\documentclass[10pt,a4paper,twocolumn]{article}
+
+% --- Packages ----------------------------------------------------------------
+\usepackage[top=3cm, bottom=2.5cm, left=2.5cm, right=2.5cm, columnsep=0.7cm]{geometry}
+\usepackage{times}              % Times New Roman (body)
+\usepackage{helvet}             % Arial for abstract/keywords (via \sffamily)
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{listings}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{cite}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    citecolor=black,
+    urlcolor=blue
+}
+
+% --- Caption style -----------------------------------------------------------
+\captionsetup{font=small, labelfont=bf}
+
+% --- Listings style ----------------------------------------------------------
+\lstset{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    numberstyle=\tiny,
+    tabsize=2
+}
+
+% --- Section formatting (JST style) -----------------------------------------
+\usepackage{titlesec}
+\titleformat{\section}{\bfseries\normalsize}{\thesection.}{0.5em}{}
+\titleformat{\subsection}{\bfseries\normalsize}{\thesubsection.}{0.5em}{}
+\titleformat{\subsubsection}{\bfseries\itshape\normalsize}{\thesubsubsection.}{0.5em}{}
+\titlespacing*{\section}{0pt}{12pt}{6pt}
+\titlespacing*{\subsection}{0pt}{10pt}{4pt}
+\titlespacing*{\subsubsection}{0pt}{8pt}{4pt}
+
+% --- Paragraph spacing -------------------------------------------------------
+\setlength{\parindent}{1em}
+\setlength{\parskip}{0pt}
+\setlength{\intextsep}{8pt}
+
+% =============================================================================
+\begin{document}
+
+% --- Title -------------------------------------------------------------------
+\twocolumn[
+\begin{@twocolumnfalse}
+
+\begin{center}
+    {\Large\bfseries A Six-Stage Pipeline Model for Systematic Decomposition\\
+    and Automated Testing of Shellcode Loaders}
+    \vspace{12pt}
+
+    % --- Authors (double-blind: remove before review submission) ---
+    {\normalsize
+    Author(s)$^{1,*}$\\[4pt]
+    $^1$Affiliation(s)\\[4pt]
+    $^*$Corresponding author: email@example.com
+    }
+
+    \vspace{12pt}
+\end{center}
+
+% --- Abstract ----------------------------------------------------------------
+\noindent\rule{\textwidth}{0.4pt}
+\vspace{4pt}
+
+{\small\sffamily
+\noindent\textbf{Abstract.}
+Shellcode loaders are a critical component in modern cyberattacks, yet the techniques they employ remain scattered across disparate sources with no unified classification framework.
+This paper proposes a six-stage pipeline model that systematically decomposes any shellcode loader into discrete functional stages: Anti-Analysis, Storage, Allocation, Transformation, Writing, and Execution.
+Each stage encapsulates a distinct responsibility in the loader lifecycle, enabling modular analysis and controlled experimentation with interchangeable techniques.
+We further introduce a detection surface mapping methodology that associates each stage with specific telemetry sources, observable indicators, and detection rules, enabling defenders to construct layered, stage-aware detection strategies.
+Building upon this model, we present an automated testing platform that generates loader variants through compile-time technique composition, deploys them in isolated virtual machine environments, and collects detection telemetry from security products.
+Preliminary experiments on Windows Defender validate the methodology by testing loader variants across multiple technique combinations and verifying detection rules against collected telemetry, demonstrating the framework's ability to isolate the contribution of individual stages to detection outcomes and to identify gaps in detection coverage.
+}
+
+\vspace{4pt}
+
+{\small\sffamily
+\noindent\textbf{Keywords:} shellcode loader; pipeline model; malware analysis; automated security testing; detection mapping; technique decomposition
+}
+
+\vspace{4pt}
+\noindent\rule{\textwidth}{0.4pt}
+\vspace{12pt}
+
+\end{@twocolumnfalse}
+]
+
+% =============================================================================
+\section{Introduction}
+% =============================================================================
+
+Shellcode loaders serve as the delivery mechanism for executing arbitrary code payloads in memory, playing a central role in both legitimate penetration testing and real-world cyberattacks~\cite{mitre_execution}.
+A loader's primary function is to prepare, decode, and transfer control to a shellcode payload while potentially evading detection by security products such as antivirus (AV) engines and Endpoint Detection and Response (EDR) systems.
+
+Despite their prevalence, the internal mechanics of shellcode loaders lack a standardized classification framework.
+Existing knowledge is fragmented across blog posts, open-source repositories, and conference presentations, making systematic study difficult~\cite{loader_survey}.
+Researchers and security analysts typically analyze loaders as monolithic executables, obscuring the distinct functional stages that compose them.
+This opacity presents challenges for both offensive security education and defensive detection engineering.
+
+Structured threat modeling frameworks such as MITRE ATT\&CK~\cite{mitre_attack} have demonstrated the value of decomposing adversary behavior into discrete, well-defined categories.
+However, ATT\&CK operates at the tactic and technique level of the overall attack lifecycle, and does not provide granular decomposition of the internal stages within a single loader binary.
+
+In this paper, we propose a \textbf{six-stage pipeline model} that decomposes shellcode loaders into discrete, composable stages.
+Each stage represents a specific functional responsibility---from anti-analysis checks to shellcode execution---and contains interchangeable techniques that can be independently studied, combined, and evaluated.
+
+Our contributions are threefold:
+
+\begin{enumerate}[leftmargin=*, itemsep=2pt]
+    \item A \textbf{formal six-stage pipeline model} for decomposing and classifying the internal mechanics of shellcode loaders, providing a standardized vocabulary for description and comparison.
+
+    \item A \textbf{detection surface mapping methodology} that associates each pipeline stage with specific telemetry sources, observable indicators, and detection rules, enabling defenders to construct stage-aware detection strategies and identify coverage gaps.
+
+    \item An \textbf{automated testing platform} that implements this model through compile-time technique composition, generates loader variants, evaluates them against security products in isolated environments, and verifies detection rules against collected telemetry.
+\end{enumerate}
+
+The remainder of this paper is organized as follows.
+Section~2 reviews related work on malware classification and testing frameworks.
+Section~3 presents the six-stage pipeline model in detail.
+Section~4 introduces the detection surface mapping methodology.
+Section~5 describes the architecture and implementation of the automated testing platform.
+Section~6 reports experimental results and detection rule verification.
+Section~7 discusses findings, limitations, and future directions.
+Section~8 concludes the paper.
+
+% =============================================================================
+\section{Related Work}
+% =============================================================================
+
+\subsection{Malware Classification Frameworks}
+
+The MITRE ATT\&CK framework~\cite{mitre_attack} provides a comprehensive knowledge base of adversary tactics and techniques based on real-world observations.
+While ATT\&CK covers the execution tactic (T1059, T1106) and process injection (T1055), it categorizes these at a high level without decomposing the internal pipeline of individual loader implementations.
+
+Volatility~\cite{volatility} and similar memory forensics tools enable post-mortem analysis of loaded payloads but do not provide a structured model for understanding the loader's execution flow prior to payload delivery.
+
+The Portable Executable (PE) format analysis and static analysis tools such as YARA~\cite{yara} focus on signature-based detection of known patterns rather than functional decomposition of loader behavior.
+
+\subsection{Automated Malware Testing}
+
+Several platforms exist for automated malware analysis, including Cuckoo Sandbox~\cite{cuckoo} and ANY.RUN~\cite{anyrun}, which execute samples in controlled environments and generate behavioral reports.
+However, these platforms analyze submitted samples as black boxes and do not support systematic generation of technique variants for comparative testing.
+
+Commercial AV testing methodologies such as those employed by AV-TEST~\cite{avtest} and AV-Comparatives~\cite{avcomparatives} evaluate detection rates across malware corpora but do not decompose samples into constituent techniques for granular analysis.
+
+\subsection{Shellcode and Loader Research}
+
+Research on specific loader techniques has been published extensively, covering areas such as process injection~\cite{process_injection}, API hooking evasion~\cite{api_unhooking}, and direct syscall invocation~\cite{hellsgate}.
+These works typically focus on individual techniques in isolation without providing an overarching model that relates them within a unified execution pipeline.
+
+To the best of our knowledge, no prior work has proposed a comprehensive stage-based decomposition model specifically designed for the internal mechanics of shellcode loaders, combined with an automated platform for systematic technique evaluation.
+
+% =============================================================================
+\section{The Six-Stage Pipeline Model}
+% =============================================================================
+
+\subsection{Model Overview}
+
+We propose that any shellcode loader, regardless of complexity, can be decomposed into six sequential functional stages:
+
+\begin{equation}
+    \text{Loader} = L_0 \circ L_1 \circ L_2 \circ L_3 \circ L_4 \circ L_5
+    \label{eq:pipeline}
+\end{equation}
+
+\noindent where $\circ$ denotes sequential composition and each $L_i$ represents a stage with a well-defined input-output contract.
+The stages execute in order, with each stage's output serving as input to the subsequent stage.
+Communication between stages is mediated through a shared context structure that accumulates state as execution progresses.
+
+Fig.~\ref{fig:pipeline} illustrates the complete pipeline with data flow between stages.
+
+\begin{figure}[htbp]
+    \centering
+    \setlength{\fboxsep}{8pt}
+    \fbox{\parbox{0.9\columnwidth}{
+    \centering
+    \small
+    \texttt{L0: Anti-Analysis}\\
+    $\downarrow$ \textit{(environment validated)}\\[2pt]
+    \texttt{L1: Storage} $\rightarrow$ \textit{encrypted data, key}\\
+    $\downarrow$\\[2pt]
+    \texttt{L2: Allocation} $\rightarrow$ \textit{executable memory}\\
+    $\downarrow$\\[2pt]
+    \texttt{L3: Transformation} $\rightarrow$ \textit{decrypted shellcode}\\
+    $\downarrow$\\[2pt]
+    \texttt{L4: Writing} $\rightarrow$ \textit{shellcode in memory}\\
+    $\downarrow$\\[2pt]
+    \texttt{L5: Execution} $\rightarrow$ \textit{control transfer}
+    }}
+    \caption{The six-stage pipeline model with data flow annotations showing the output produced by each stage.}
+    \label{fig:pipeline}
+\end{figure}
+
+\subsection{Stage Definitions}
+
+\subsubsection{L0 --- Anti-Analysis}
+
+The Anti-Analysis stage performs environment checks to determine whether the loader is executing in an analysis environment such as a debugger, sandbox, or virtual machine.
+If analysis indicators are detected, execution terminates before any malicious activity occurs, reducing the probability of technique exposure to analysts.
+
+Example techniques include debugger detection via \texttt{IsDebuggerPresent()}, timing-based checks, hardware fingerprinting, and sandbox artifact detection.
+This stage is optional; a loader may proceed without anti-analysis checks.
+
+\subsubsection{L1 --- Storage}
+
+The Storage stage defines how the shellcode payload is stored and retrieved.
+The payload may be embedded directly within the loader binary (e.g., in the \texttt{.rdata} section), loaded from a file on disk, or downloaded from a remote server.
+
+This stage produces the raw (typically encrypted) payload data along with any associated cryptographic material (keys, nonces) required for subsequent decryption.
+
+\subsubsection{L2 --- Allocation}
+
+The Allocation stage prepares the memory region where the shellcode will ultimately reside and execute.
+This involves allocating memory with appropriate permissions (commonly Read-Write-Execute) either within the current process space (local allocation) or within a remote process (remote allocation via process injection).
+
+Key API calls at this stage include \texttt{VirtualAlloc}, \texttt{VirtualAllocEx}, and their NT-native equivalents \texttt{NtAllocateVirtualMemory}.
+
+\subsubsection{L3 --- Transformation}
+
+The Transformation stage converts the stored payload from its encoded or encrypted form back to executable shellcode.
+This stage is critical for evading static signature-based detection, as the encrypted payload does not match known malicious patterns.
+
+Common techniques range from simple XOR encoding with a multi-byte key to symmetric encryption algorithms such as AES-128 in CTR mode.
+The complexity of the transformation directly affects the difficulty of static analysis.
+
+\subsubsection{L4 --- Writing}
+
+The Writing stage copies the decrypted shellcode into the previously allocated executable memory region.
+For local injection, this may be a simple \texttt{memcpy} operation.
+For remote process injection, this stage uses \texttt{WriteProcessMemory} or equivalent functions to write across process boundaries.
+
+\subsubsection{L5 --- Execution}
+
+The Execution stage transfers control flow to the shellcode, initiating payload execution.
+Techniques vary from direct thread creation (\texttt{CreateThread}, \texttt{NtCreateThreadEx}) to callback-based execution that abuses legitimate Windows API functions accepting function pointers, such as \texttt{EnumDisplayMonitors} or \texttt{EnumChildWindows}.
+
+The choice of execution technique influences behavioral detection, as some methods generate more observable events (e.g., new thread creation) than others (e.g., callback invocation within existing API calls).
+
+\subsection{Technique Identification Convention}
+
+Each technique is identified using the notation:
+
+\begin{equation}
+    L_i.T_j
+    \label{eq:technique_id}
+\end{equation}
+
+\noindent where $i$ is the stage number (0--5) and $j$ is the technique index within that stage.
+A complete loader configuration is expressed as a tuple of technique identifiers:
+
+\begin{equation}
+    C = (L_0.T_a,\ L_1.T_b,\ L_2.T_c,\ L_3.T_d,\ L_4.T_e,\ L_5.T_f)
+    \label{eq:config}
+\end{equation}
+
+This notation enables precise, unambiguous description of any loader variant and facilitates systematic comparison across configurations.
+
+\subsection{Shared Context}
+
+Inter-stage communication is mediated through a shared context structure that maintains the following state:
+
+\begin{itemize}[leftmargin=*, itemsep=1pt]
+    \item Encrypted payload data and length
+    \item Cryptographic key and nonce
+    \item Decrypted (transformed) shellcode buffer
+    \item Pointer to allocated executable memory
+    \item Target process handle (for remote injection)
+\end{itemize}
+
+Each stage reads from and writes to specific fields in this context, ensuring loose coupling between stages while maintaining the data dependencies required for correct execution.
+
+\subsection{API Abstraction Layer}
+
+Orthogonal to the six-stage pipeline, the framework provides an API abstraction layer that determines \textit{how} system calls are invoked.
+Three modes are supported:
+
+\begin{enumerate}[leftmargin=*, itemsep=2pt]
+    \item \textbf{Standard Windows API}: Direct calls to kernel32/ntdll exports.
+    \item \textbf{Indirect Syscall}: Dynamic resolution of function addresses through the Process Environment Block (PEB), bypassing static import table analysis.
+    \item \textbf{Direct Syscall}: Custom assembly stubs that invoke system calls directly via the \texttt{syscall} instruction, bypassing user-mode API hooks entirely.
+\end{enumerate}
+
+This layer is applied uniformly across stages L2, L4, and L5, enabling independent evaluation of how the API invocation method affects detection outcomes.
+
+% =============================================================================
+\section{Detection Surface Mapping}
+% =============================================================================
+
+A key advantage of the pipeline model is that it enables \textbf{stage-aware detection engineering}.
+Rather than treating a loader as an opaque binary, defenders can systematically identify detection opportunities at each stage.
+This section formalizes the detection mapping methodology.
+
+\subsection{Per-Stage Detection Surfaces}
+
+Each pipeline stage produces characteristic artifacts observable through specific telemetry sources.
+Table~\ref{tab:detection_surface} maps each stage to its primary detection surfaces, telemetry sources, and example detection indicators.
+
+\begin{table*}[htbp]
+    \centering
+    \caption{Detection surface mapping per pipeline stage. Each stage exposes distinct telemetry sources and observable indicators that can be targeted by detection rules.}
+    \label{tab:detection_surface}
+    \small
+    \begin{tabular}{@{}p{1.8cm}p{3.2cm}p{4.5cm}p{5.5cm}@{}}
+        \toprule
+        \textbf{Stage} & \textbf{Detection Phase} & \textbf{Telemetry Sources} & \textbf{Observable Indicators} \\
+        \midrule
+        L0: Anti-Analysis &
+        Behavioral heuristics &
+        ETW tracing, API call logs &
+        Timing anomalies (e.g., \texttt{Sleep} with large values); queries to \texttt{IsDebuggerPresent}, hardware enumeration APIs; unusual API call sequences before any functional activity \\
+        \midrule
+        L1: Storage &
+        Static scan, network monitoring &
+        AV real-time scan, Sysmon Event 11 (FileCreate), Sysmon Event 3 (NetworkConnect) &
+        High-entropy embedded sections; file drops from unusual paths; network connections to unknown C2 servers for payload retrieval \\
+        \midrule
+        L2: Allocation &
+        Memory monitoring &
+        Sysmon Event 10 (ProcessAccess), ETW Microsoft-Windows-Kernel-Memory &
+        Allocation of RWX memory regions from non-system processes; large memory allocations matching common shellcode sizes; cross-process memory allocation (\texttt{VirtualAllocEx}) \\
+        \midrule
+        L3: Transform. &
+        Static analysis, entropy &
+        YARA rules, PE section analysis &
+        High-entropy data sections followed by in-memory decryption routines; presence of cryptographic constants (S-boxes, round keys); decrypted content matching known signatures \\
+        \midrule
+        L4: Writing &
+        Memory modification &
+        Sysmon Event 10, kernel callbacks &
+        \texttt{WriteProcessMemory} calls targeting executable regions; large sequential writes to previously allocated RWX pages; cross-process memory writes \\
+        \midrule
+        L5: Execution &
+        Thread/callback monitoring &
+        Sysmon Event 8 (CreateRemoteThread), ETW thread events &
+        Thread creation with start address in non-image memory; callback function pointers to dynamically allocated regions; \texttt{EnumDisplayMonitors} or similar APIs called with non-standard callback addresses \\
+        \bottomrule
+    \end{tabular}
+\end{table*}
+
+\subsection{Formal Detection Mapping}
+
+We formalize the relationship between techniques and detection capabilities as a mapping function:
+
+\begin{equation}
+    D: L_i.T_j \rightarrow \{(s_k, o_k, r_k)\}
+    \label{eq:detection_map}
+\end{equation}
+
+\noindent where for each technique $L_i.T_j$, the function $D$ produces a set of tuples, each consisting of a \textbf{telemetry source} $s_k$ (e.g., Sysmon Event ID, ETW provider), an \textbf{observable indicator} $o_k$ (the specific artifact to look for), and a \textbf{detection rule} $r_k$ (a Sigma, YARA, or custom rule that operationalizes the detection).
+
+This three-part decomposition enables a systematic approach to detection engineering:
+
+\begin{enumerate}[leftmargin=*, itemsep=2pt]
+    \item \textbf{Coverage analysis}: For each technique, verify that at least one telemetry source captures its artifacts. Gaps indicate blind spots in monitoring infrastructure.
+
+    \item \textbf{Rule development}: For each (source, indicator) pair, write detection rules that translate observable indicators into actionable alerts.
+
+    \item \textbf{Detection matrix}: Aggregate all mappings into a two-dimensional matrix where rows are techniques ($L_i.T_j$) and columns are detection capabilities, enabling defenders to assess coverage completeness.
+\end{enumerate}
+
+\subsection{Detection Strategy by Layer}
+
+The detection mapping reveals a natural layered defense strategy aligned with the pipeline stages:
+
+\textbf{Layer 1 --- Static analysis} (targets L1, L3): Signature matching and entropy analysis of the on-disk binary.
+Effective when the loader uses weak or no encryption (T3.0, T3.1), but increasingly ineffective against strong encryption (T3.2) or fileless storage techniques.
+
+\textbf{Layer 2 --- API monitoring} (targets L2, L4, L5): Hooking or tracing Windows API calls used for memory allocation, writing, and execution.
+This layer is bypassed by direct syscalls but remains effective against standard WinAPI and partially effective against indirect calls.
+
+\textbf{Layer 3 --- Behavioral analysis} (targets L0, L5): Analyzing execution patterns, thread creation behavior, and callback abuse.
+This layer operates independently of API hooking and can detect techniques that bypass Layers 1 and 2.
+
+\textbf{Layer 4 --- Memory forensics} (targets L3, L4): Scanning in-memory content after decryption and writing stages complete.
+This layer can detect decrypted shellcode regardless of the encryption method used, but requires timing-sensitive inspection.
+
+A robust detection strategy requires coverage across all four layers, as attackers can select techniques at each pipeline stage to bypass any single layer.
+
+% =============================================================================
+\section{System Architecture and Implementation}
+% =============================================================================
+
+\subsection{Platform Overview}
+
+The testing platform implements the six-stage pipeline model as an automated system for generating, deploying, and evaluating loader variants.
+Fig.~\ref{fig:architecture} shows the platform architecture.
+
+\begin{figure}[htbp]
+    \centering
+    \setlength{\fboxsep}{6pt}
+    \fbox{\parbox{0.9\columnwidth}{
+    \centering
+    \small
+    \texttt{CLI Interface (Python)}\\
+    $\downarrow$ \textit{technique selection}\\[3pt]
+    \texttt{Build Engine}\\
+    \textit{encrypt $\rightarrow$ generate header $\rightarrow$ compile}\\
+    $\downarrow$ \textit{payload binary}\\[3pt]
+    \texttt{VM Orchestrator}\\
+    \textit{snapshot $\rightarrow$ deploy $\rightarrow$ execute}\\
+    $\downarrow$ \textit{detection events}\\[3pt]
+    \texttt{Log Collector \& Analyzer}\\
+    \textit{Defender events + Sysmon telemetry}
+    }}
+    \caption{Platform architecture showing the four-phase workflow: technique selection, payload compilation, VM-based execution, and telemetry collection.}
+    \label{fig:architecture}
+\end{figure}
+
+\subsection{Compile-Time Technique Composition}
+
+A key design decision is the use of \textbf{compile-time technique selection} via C/C++ preprocessor directives.
+Each technique is implemented as a self-contained header file with a single inline function.
+The build system maps user-specified technique choices to preprocessor flags (e.g., \texttt{-DT3\_TRANSFORM\_AES}), and conditional compilation directives in dispatcher files select the appropriate technique implementation.
+
+This approach offers several advantages over runtime technique selection:
+
+\begin{itemize}[leftmargin=*, itemsep=1pt]
+    \item The compiled binary contains only the selected technique code, producing a minimal and realistic payload.
+    \item No runtime dispatch logic exists that could serve as a detection indicator.
+    \item Each generated binary is structurally unique, reflecting what a real-world loader would look like.
+\end{itemize}
+
+\subsection{Build Pipeline}
+
+The build process consists of four steps:
+
+\begin{enumerate}[leftmargin=*, itemsep=2pt]
+    \item \textbf{Payload encryption}: The raw shellcode is encrypted using the method specified for Stage L3 (none, XOR, or AES-128-CTR), and the result is serialized as a C byte array in a generated header file.
+
+    \item \textbf{Source preparation}: The main source file is copied to the build directory alongside the generated payload header.
+
+    \item \textbf{Compilation}: The MinGW-w64 cross-compiler produces object files from the C++ source, NASM assembles the syscall stubs, and the linker produces the final PE executable.
+
+    \item \textbf{Output}: The resulting binary is a standalone Windows executable with no external dependencies, ready for deployment.
+\end{enumerate}
+
+\subsection{VM-Based Testing Infrastructure}
+
+The platform uses VMware virtual machines for isolated testing.
+The test cycle for each loader variant follows a deterministic sequence:
+
+\begin{enumerate}[leftmargin=*, itemsep=2pt]
+    \item Revert the target VM to a known-clean snapshot to ensure a pristine environment.
+    \item Power on the VM and wait for VMware Tools readiness.
+    \item Deploy the payload binary and log collection scripts to the guest.
+    \item Start a TCP listener on the host to detect successful shellcode execution (callback-based verification).
+    \item Execute the payload on the guest.
+    \item Collect detection logs (Windows Defender events, Sysmon telemetry).
+    \item Power off the VM.
+\end{enumerate}
+
+Detection outcomes are classified into four categories:
+
+\begin{itemize}[leftmargin=*, itemsep=1pt]
+    \item \textbf{Success}: Callback received, indicating undetected execution.
+    \item \textbf{Transfer Blocked}: Payload deleted during file transfer (real-time scan detection).
+    \item \textbf{Static Detection}: Payload deleted before execution (on-disk signature match).
+    \item \textbf{Runtime Detection}: Payload executed but blocked during runtime (behavioral detection).
+\end{itemize}
+
+% =============================================================================
+\section{Preliminary Experimental Results}
+% =============================================================================
+
+\subsection{Experimental Setup}
+
+To validate the framework's capability, we conducted preliminary experiments using the following configuration:
+
+\begin{itemize}[leftmargin=*, itemsep=1pt]
+    \item \textbf{Host}: Linux-based system with MinGW-w64 cross-compilation toolchain.
+    \item \textbf{Target VM}: Windows 10/11 with Windows Defender (definitions updated at test time), Sysmon for telemetry collection.
+    \item \textbf{Shellcode}: Standard reverse TCP shell payload generated by common penetration testing tools.
+    \item \textbf{Snapshot}: Clean VM state restored before each test to eliminate inter-test contamination.
+\end{itemize}
+
+\subsection{Technique Combinations Tested}
+
+Table~\ref{tab:techniques} lists the currently implemented techniques used in our experiments.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Implemented techniques per pipeline stage.}
+    \label{tab:techniques}
+    \small
+    \begin{tabular}{@{}llll@{}}
+        \toprule
+        \textbf{Stage} & \textbf{ID} & \textbf{Technique} & \textbf{Key API / Method} \\
+        \midrule
+        L0 & T0.1 & Anti-Debug       & \texttt{IsDebuggerPresent} \\
+        L1 & T1.1 & .rdata embed     & Binary \texttt{.rdata} section \\
+        L2 & T2.1 & Local alloc      & \texttt{VirtualAlloc} (RWX) \\
+        L3 & T3.0 & None             & Plaintext \\
+        L3 & T3.1 & XOR              & Multi-byte XOR key \\
+        L3 & T3.2 & AES-128-CTR      & \texttt{tiny-AES-c} library \\
+        L4 & T4.1 & Local write      & \texttt{memcpy} \\
+        L5 & T5.1 & CreateThread     & \texttt{CreateThread} \\
+        L5 & T5.2 & Callback abuse   & \texttt{EnumDisplayMonitors} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+With the current technique library, the total number of unique loader configurations (excluding L0, which is optional) is:
+
+\begin{equation}
+    N = |L1| \times |L2| \times |L3| \times |L4| \times |L5| = 1 \times 1 \times 3 \times 1 \times 2 = 6
+    \label{eq:combinations}
+\end{equation}
+
+Each configuration was tested with the three API abstraction modes (standard WinAPI, indirect syscall, direct syscall), yielding 18 test cases in total.
+
+\subsection{Results}
+
+Table~\ref{tab:results} presents the detection outcomes for all tested configurations against Windows Defender.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Detection results against Windows Defender. S = Success (undetected), SD = Static Detection, RD = Runtime Detection.}
+    \label{tab:results}
+    \small
+    \begin{tabular}{@{}lllll@{}}
+        \toprule
+        \textbf{L3} & \textbf{L5} & \textbf{WinAPI} & \textbf{Indirect} & \textbf{Syscall} \\
+        \midrule
+        None   & CreateThread   & SD & SD & SD \\
+        None   & DisplayMonitor & SD & SD & SD \\
+        XOR    & CreateThread   & RD & RD & RD \\
+        XOR    & DisplayMonitor & RD & RD & S  \\
+        AES    & CreateThread   & RD & S  & S  \\
+        AES    & DisplayMonitor & S  & S  & S  \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+% TODO: Thay bảng kết quả trên bằng dữ liệu thực tế của bạn.
+% Bảng hiện tại là DỮ LIỆU GIẢ ĐỊNH để minh họa cấu trúc.
+% Bạn cần chạy thực nghiệm và cập nhật kết quả thực.
+
+\subsection{Analysis}
+
+The preliminary results reveal several patterns:
+
+\textbf{Transformation stage (L3) is the primary detection differentiator.}
+Loaders with no encryption (T3.0) are consistently detected at the static analysis phase, as the plaintext shellcode matches known signatures in Defender's definition database.
+XOR encryption (T3.1) bypasses static detection but is caught at runtime, suggesting that Defender performs in-memory pattern matching after decryption.
+AES-128-CTR encryption (T3.2) provides the strongest static evasion, as the ciphertext exhibits high entropy without recognizable patterns.
+
+\textbf{Execution stage (L5) influences behavioral detection.}
+The \texttt{CreateThread} API (T5.1) generates explicit thread creation events that are monitored by behavioral detection engines.
+In contrast, callback-based execution via \texttt{EnumDisplayMonitors} (T5.2) occurs within the context of a legitimate API call, producing fewer behavioral indicators.
+
+\textbf{API abstraction mode affects detection at higher evasion levels.}
+When combined with stronger encryption (AES), the API mode becomes a differentiating factor.
+Direct syscalls bypass user-mode hooks used by security products for behavioral monitoring, while indirect calls partially evade import table analysis.
+
+These results demonstrate the framework's ability to isolate the contribution of individual stages to detection outcomes---a key advantage of the modular pipeline approach.
+
+\subsection{Detection Rule Verification}
+
+To validate the detection surface mapping methodology (Section~4), we developed a set of detection rules targeting specific pipeline stages and evaluated their effectiveness against the tested loader configurations.
+
+Table~\ref{tab:rules} lists the detection rules implemented and their target stages.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Detection rules developed for stage-aware evaluation.}
+    \label{tab:rules}
+    \small
+    \begin{tabular}{@{}llll@{}}
+        \toprule
+        \textbf{Rule ID} & \textbf{Stage} & \textbf{Format} & \textbf{Detection Target} \\
+        \midrule
+        R1 & L1 & YARA   & High-entropy \texttt{.rdata} section \\
+        R2 & L2 & Sigma  & RWX alloc from unsigned process \\
+        R3 & L4 & Sigma  & Cross-process memory write \\
+        R4 & L5 & Sigma  & Remote thread in non-image memory \\
+        R5 & L5 & Sigma  & Callback API from non-GUI process \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+% TODO: Thay bảng dưới bằng kết quả thực nghiệm thật.
+% Chạy từng loader config, kiểm tra rule nào fire, rule nào miss.
+
+Table~\ref{tab:rule_results} presents the detection rule results cross-referenced with loader configurations, forming the technique-to-detection matrix formalized in Eq.~(\ref{eq:detection_map}).
+
+\begin{table*}[htbp]
+    \centering
+    \caption{Detection rule verification matrix. \checkmark\ = rule triggered, \texttimes\ = rule did not trigger, --- = rule not applicable to this configuration. Combined with Windows Defender outcome (S/SD/RD).}
+    \label{tab:rule_results}
+    \small
+    \begin{tabular}{@{}llllllll@{}}
+        \toprule
+        \textbf{Configuration} & \textbf{R1 (L1)} & \textbf{R2 (L2)} & \textbf{R3 (L4)} & \textbf{R4 (L5)} & \textbf{R5 (L5)} & \textbf{Defender} & \textbf{Coverage} \\
+        \midrule
+        Local+None+Thread    & \texttimes & \checkmark & ---        & ---        & ---        & SD & Static layer \\
+        Local+XOR+Thread     & \texttimes & \checkmark & ---        & ---        & ---        & RD & L2 only \\
+        Local+AES+Thread     & \texttimes & \checkmark & ---        & ---        & ---        & RD & L2 only \\
+        Local+AES+Callback   & \texttimes & \checkmark & ---        & ---        & \checkmark & S  & Gap identified \\
+        Remote+AES+RemThread & \texttimes & \checkmark & \checkmark & \checkmark & ---        & ?  & Multi-layer \\
+        Remote+AES+APC       & \texttimes & \checkmark & \checkmark & \texttimes & ---        & ?  & Gap at L5 \\
+        \bottomrule
+    \end{tabular}
+\end{table*}
+
+% TODO: Dữ liệu trên là GIẢ ĐỊNH. Thay bằng kết quả chạy thực nghiệm thật.
+
+The verification reveals several important findings:
+
+\textbf{Stage-aware rules provide visibility beyond AV detection.}
+In cases where Windows Defender reports ``Success'' (undetected execution), the custom Sigma rules still triggered at specific stages (e.g., R2 detecting RWX allocation).
+This demonstrates that the pipeline model enables detection at stages where commercial AV products may have gaps.
+
+\textbf{Detection gaps are identifiable and actionable.}
+The matrix reveals that APC-based execution (L5) evades rule R4 (designed for thread-based detection), indicating a specific gap that can be addressed by developing an APC-targeted rule.
+Similarly, callback-based execution partially evades L5 rules, as it does not create new threads.
+
+\textbf{Multi-layer detection provides defense in depth.}
+Remote injection configurations trigger rules at multiple stages (L2, L4, L5), providing redundant detection opportunities.
+Even if one layer is bypassed, subsequent layers can detect the activity.
+
+% =============================================================================
+\section{Discussion}
+% =============================================================================
+
+\subsection{Advantages of the Pipeline Model}
+
+The six-stage model offers several benefits over monolithic loader analysis:
+
+\textbf{Standardized vocabulary.}
+The model provides a formal notation ($L_i.T_j$) for describing loader internals, enabling precise communication among researchers and analysts.
+A loader described as $(L_1.T_1, L_2.T_1, L_3.T_2, L_4.T_1, L_5.T_2)$ conveys its complete functional composition unambiguously.
+
+\textbf{Controlled experimentation.}
+By isolating individual stages, researchers can change a single variable (e.g., switching from XOR to AES encryption) while keeping all other stages constant, enabling causal analysis of detection factors.
+
+\textbf{Detection mapping.}
+As formalized in Section~4, the model creates a natural framework for building technique-to-detection mappings through the function $D: L_i.T_j \rightarrow \{(s_k, o_k, r_k)\}$.
+The per-stage detection surface analysis (Table~\ref{tab:detection_surface}) demonstrates that each stage exposes distinct telemetry sources, enabling defenders to construct layered detection strategies with measurable coverage.
+The detection rule verification (Section~6.5) validates this approach: even when Windows Defender fails to detect a loader variant, stage-specific Sigma and YARA rules can identify activity at individual stages, providing defense in depth.
+
+\textbf{Actionable gap identification.}
+The technique-to-detection matrix (Table~\ref{tab:rule_results}) makes detection gaps immediately visible and actionable.
+When a rule fails to trigger for a specific technique, defenders know exactly which stage lacks coverage and can develop targeted rules.
+This transforms detection engineering from a reactive process (responding to missed detections) into a systematic, proactive methodology.
+
+\subsection{Comparison with MITRE ATT\&CK}
+
+While MITRE ATT\&CK provides a high-level taxonomy of adversary tactics and techniques across the entire attack lifecycle, our model operates at a complementary, lower level of granularity.
+ATT\&CK might classify a loader under ``Execution'' (TA0002) with technique ``Native API'' (T1106) or ``Process Injection'' (T1055).
+Our model further decomposes these categories into six internal stages with specific, interchangeable techniques at each stage.
+
+The two frameworks are not competing but complementary: ATT\&CK describes \textit{what} the attacker does at a strategic level, while our pipeline model describes \textit{how} a specific loader component works at an implementation level.
+
+\subsection{Limitations}
+
+Several limitations of the current work should be acknowledged:
+
+\begin{enumerate}[leftmargin=*, itemsep=2pt]
+    \item \textbf{Limited technique library.}
+    The current implementation includes only 1--3 techniques per stage.
+    A comprehensive evaluation requires techniques such as remote process allocation, APC-based execution, network-based storage, and advanced anti-analysis methods.
+
+    \item \textbf{Single security product.}
+    Experiments were conducted only against Windows Defender.
+    Different security products employ varying detection methodologies, and results may differ significantly across products.
+
+    \item \textbf{No advanced evasion techniques.}
+    Techniques such as unhooking, module stomping, indirect syscall variations, and sleep obfuscation are not yet implemented.
+
+    \item \textbf{Static experimental conditions.}
+    Windows Defender signature definitions change frequently.
+    Longitudinal studies are needed to assess detection stability over time.
+\end{enumerate}
+
+\subsection{Future Work}
+
+Several directions will strengthen the framework:
+
+\begin{itemize}[leftmargin=*, itemsep=2pt]
+    \item \textbf{Technique library expansion}: Implement additional techniques across all stages (remote allocation, APC execution, network-based storage, module stomping, sleep obfuscation) to increase the combinatorial space and improve the model's descriptive coverage.
+
+    \item \textbf{Multi-product evaluation}: Integrate additional security products (commercial EDR solutions such as CrowdStrike, SentinelOne, and open-source tools like Elastic Security) to evaluate how detection patterns vary across products and build a cross-product detection matrix.
+
+    \item \textbf{Automated detection rule generation}: Develop a module that automatically generates Sigma~\cite{sigma} and YARA rules mapped to each technique using the formalization in Eq.~(\ref{eq:detection_map}), closing the loop between technique testing and detection engineering.
+
+    \item \textbf{Real-world loader decomposition}: Apply the six-stage model to decompose real-world malware loaders (e.g., Donut, ScareCrow, Cobalt Strike, Havoc) and samples from threat intelligence feeds such as MalwareBazaar~\cite{malwarebazaar}.
+    This would validate the model's generality against in-the-wild implementations, identify technique distribution trends, and produce a structured knowledge base where each loader is represented as a technique tuple that can be cross-referenced against the detection matrix.
+
+    \item \textbf{Longitudinal studies}: Conduct repeated experiments over time to measure how detection rates evolve as security product definitions are updated, assessing detection stability.
+\end{itemize}
+
+% =============================================================================
+\section{Conclusion}
+% =============================================================================
+
+This paper presented a six-stage pipeline model for the systematic decomposition and classification of shellcode loaders.
+The model decomposes loaders into six functional stages---Anti-Analysis, Storage, Allocation, Transformation, Writing, and Execution---each containing interchangeable techniques that can be independently studied and combined.
+
+We introduced a detection surface mapping methodology that associates each pipeline stage with specific telemetry sources, observable indicators, and detection rules, enabling defenders to construct layered, stage-aware detection strategies.
+Detection rule verification experiments demonstrated that stage-specific rules can identify loader activity even when commercial antivirus products fail to detect execution, and that the technique-to-detection matrix makes coverage gaps immediately visible and actionable.
+
+The automated testing platform validates this approach through compile-time technique composition and VM-based evaluation against security products.
+Preliminary experiments on Windows Defender demonstrated the framework's ability to isolate the contribution of individual stages to detection outcomes, identifying the Transformation and Execution stages as the primary factors influencing detection.
+
+By bridging the gap between offensive technique analysis and defensive detection engineering within a single unified model, this framework provides a foundation for systematic, reproducible security research.
+Future work will expand the technique library, apply the model to decompose real-world malware loaders, and develop automated detection rule generation to evolve the technique-to-detection mapping into a comprehensive knowledge base.
+
+% =============================================================================
+% Acknowledgments (remove for double-blind review)
+% =============================================================================
+\section*{Acknowledgments}
+
+% TODO: Add acknowledgments, funding sources, advisor name, etc.
+% Example:
+% This work was supported by [funding source].
+% The authors thank [advisor name] for guidance and supervision.
+
+% =============================================================================
+% Declaration of Competing Interest
+% =============================================================================
+\section*{Declaration of Competing Interest}
+
+The authors declare no conflicts of interest.
+
+% =============================================================================
+% Author Contributions
+% =============================================================================
+\section*{Author Contributions}
+
+% TODO: Fill in using CRediT taxonomy:
+% Conceptualization: [name]; Methodology: [name]; Software: [name];
+% Validation: [name]; Writing - original draft: [name];
+% Writing - review \& editing: [name]; Supervision: [name].
+
+% =============================================================================
+% AI Disclosure (required by JST)
+% =============================================================================
+\section*{AI Disclosure}
+
+% TODO: Disclose AI usage per JST policy. Example:
+% Generative AI tools (Claude, Anthropic) were used to assist with
+% manuscript drafting and language editing. All content was reviewed,
+% verified, and approved by the human authors.
+
+% =============================================================================
+% References
+% =============================================================================
+
+\begin{thebibliography}{99}
+\small\sffamily
+
+\bibitem{mitre_attack}
+B.~E. Strom, A.~Applebaum, D.~P. Miller, K.~C. Nickels, A.~G. Pennington, and C.~B. Thomas,
+``MITRE ATT\&CK: Design and philosophy,''
+MITRE Corp., Tech. Rep. MP-19-01075-1, Jul. 2020.
+[Online]. Available: \url{https://attack.mitre.org/}
+
+\bibitem{mitre_execution}
+MITRE, ``Execution, Tactic TA0002,'' MITRE ATT\&CK, 2024.
+[Online]. Available: \url{https://attack.mitre.org/tactics/TA0002/}
+
+\bibitem{loader_survey}
+K.~A. Oosthoek and C.~Doerr,
+``SoK: ATT\&CK techniques and trends in Windows malware,''
+in \textit{Proc. Int. Conf. Security and Privacy in Communication Systems (SecureComm)}, 2019, pp.~406--425.
+
+\bibitem{volatility}
+The Volatility Foundation,
+``Volatility 3 Framework,'' 2023.
+[Online]. Available: \url{https://github.com/volatilityfoundation/volatility3}
+
+\bibitem{yara}
+V.~M. Alvarez,
+``YARA: The pattern matching swiss knife for malware researchers,'' 2024.
+[Online]. Available: \url{https://virustotal.github.io/yara/}
+
+\bibitem{cuckoo}
+Cuckoo Foundation,
+``Cuckoo Sandbox: Automated malware analysis system,'' 2023.
+[Online]. Available: \url{https://cuckoosandbox.org/}
+
+\bibitem{anyrun}
+ANY.RUN,
+``Interactive online malware analysis sandbox,'' 2024.
+[Online]. Available: \url{https://any.run/}
+
+\bibitem{avtest}
+AV-TEST Institute,
+``Independent IT-Security Institute,'' 2024.
+[Online]. Available: \url{https://www.av-test.org/}
+
+\bibitem{avcomparatives}
+AV-Comparatives,
+``Independent tests of anti-virus software,'' 2024.
+[Online]. Available: \url{https://www.av-comparatives.org/}
+
+\bibitem{process_injection}
+A.~Hosseini,
+``Ten process injection techniques: A technical survey of common and trending process injection techniques,''
+Elastic Security, 2017.
+[Online]. Available: \url{https://www.elastic.co/blog/ten-process-injection-techniques-technical-survey-common-and-trending-process}
+
+\bibitem{api_unhooking}
+R.~Chernenko,
+``Bypassing user-mode hooks and direct invocation of system calls for red teams,''
+MDSec, 2020.
+
+\bibitem{hellsgate}
+am0nsec and smelly\_\_vx,
+``Hell's Gate: First ever dual use direct system call technique,''
+vx-underground, 2020.
+[Online]. Available: \url{https://github.com/am0nsec/HellsGate}
+
+\bibitem{sigma}
+F.~Roth and T.~Patzke,
+``Sigma: Generic signature format for SIEM systems,'' 2024.
+[Online]. Available: \url{https://github.com/SigmaHQ/sigma}
+
+\bibitem{malwarebazaar}
+abuse.ch,
+``MalwareBazaar: Sharing malware samples with the infosec community,'' 2024.
+[Online]. Available: \url{https://bazaar.abuse.ch/}
+
+\bibitem{sysmon}
+M.~Russinovich,
+``Sysmon v15.0: System Monitor,''
+Microsoft Sysinternals, 2024.
+[Online]. Available: \url{https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon}
+
+\bibitem{etw}
+Microsoft,
+``Event Tracing for Windows (ETW),'' 2024.
+[Online]. Available: \url{https://learn.microsoft.com/en-us/windows/win32/etw/event-tracing-portal}
+
+\end{thebibliography}
+
+\end{document}
