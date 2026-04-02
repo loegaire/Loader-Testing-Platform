@@ -135,6 +135,53 @@ Recommended storage: **≥100GB**
 
 ---
 
+# Linux Build (Windows Target)
+
+Use Linux as the development/build host and keep Windows as the payload execution target.
+
+Install build dependencies:
+
+```bash
+# Debian/Ubuntu
+sudo apt update
+sudo apt install -y mingw-w64 nasm python3 python3-pip make
+
+# Fedora
+sudo dnf install -y mingw64-gcc-c++ nasm python3 python3-pip make
+```
+
+Create and activate a Python virtual environment, then install dependencies:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+Create a dummy shellcode file (compile-only validation):
+
+```bash
+mkdir -p shellcodes
+printf '\x90\x90\x90\x90' > shellcodes/dummy.bin
+```
+
+Build on Linux (without VM execution):
+
+```bash
+python cli.py -s shellcodes/dummy.bin --build-only
+```
+
+Verify output artifact:
+
+```bash
+ls -l build/bin/payload_*.exe
+file build/bin/payload_*.exe
+```
+
+Expected result: a `PE32+ executable for MS Windows` is generated in `build/bin/`.
+
+---
+
 # Documentation
 
 Detailed research documentation is available in:

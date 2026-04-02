@@ -75,8 +75,11 @@ class PayloadBuilder:
         # 2. Xử lý Mã hóa (Stage 3 Transformation - Build Time)
         enc_method = self.options.get('t3', 'none')
         output = apply_encryption(raw_sc, enc_method)
+
+        # 3. Dọn build cũ trước khi sinh file mới
+        subprocess.run(["make", "clean"], cwd=PROJECT_ROOT, capture_output=True)
         
-        # 3. Chuẩn bị Template C++
+        # 4. Chuẩn bị Template C++
         try:
             os.makedirs(BUILD_DIR, exist_ok=True)
             os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -88,7 +91,7 @@ class PayloadBuilder:
             return None
 
 
-        # 4. Copy main.cpp → build/src/generated_loader.cpp
+        # 5. Copy main.cpp → build/src/generated_loader.cpp
         try:
             import shutil
             src_template = os.path.join(PROJECT_ROOT, 'src', 'main.cpp')
@@ -98,11 +101,9 @@ class PayloadBuilder:
             self.logger.error(f"Template copy failed: {e}")
             return None
 
-        # 5. Defines + Make
+        # 6. Defines + Make
         defines_str = get_defines(self.options)
         output_name = f"payload_{int(time.time())}.exe"
-
-        subprocess.run(["make", "clean"], cwd=PROJECT_ROOT, capture_output=True)
 
         cmd = ["make", "build",
                f"SRC={os.path.basename(src_file)}",
