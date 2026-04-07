@@ -14,7 +14,7 @@ class KVMManager:
         self.logger = logging.getLogger("KVM")
 
     def _virsh(self, args, timeout=120):
-        cmd = ["virsh"] + args
+        cmd = ["virsh", "-c", "qemu:///system"] + args
         try:
             return subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=timeout)
         except Exception as e:
