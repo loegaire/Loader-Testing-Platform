@@ -3,215 +3,228 @@
 
 ## Overview
 
-This project provides an **automated testing platform for evaluating shellcode loader techniques against AV and EDR solutions**.
+Automated testing platform for evaluating shellcode loader techniques against AV/EDR solutions.
 
-The platform automates the entire testing workflow:
+The platform automates the full testing workflow: **build loader** → **deploy to VM** → **execute** → **collect detection logs** → **report results**.
 
-- build loader payloads
-- deploy them to isolated virtual machines
-- execute them in controlled environments
-- collect detection logs
-- analyze results across different techniques
-
-The goal is to support **systematic research on shellcode loader behavior** and improve both **offensive experimentation (Red Team)** and **defensive detection analysis (Blue Team)**.
-
-The loader techniques implemented in this repository follow a **structured multi-stage model**.  
-Detailed documentation of the framework and techniques can be found in [here](./docs/)
+Built on a [6-stage loader model](./docs/methodology.md) where each stage (anti-analysis, storage, allocation, transformation, writing, execution) can be independently swapped at compile time.
 
 ---
 
-# Features
+## Quick Start
 
-- Automated payload building
-- Technique-based loader generation
-- Virtual machine orchestration via `vmrun`
-- Snapshot-based environment reset
-- Automated log collection from target systems
-- CLI-based experiment execution
+### 1. Install Host Dependencies
 
----
+```bash
+# Fedora
+sudo dnf install -y mingw64-gcc-c++ nasm python3 python3-pip make sshpass \
+    qemu-kvm libvirt virt-manager virt-install
 
-# System Architecture
-
+# Debian/Ubuntu
+sudo apt install -y mingw-w64 nasm python3 python3-pip make sshpass \
+    qemu-kvm libvirt-daemon-system libvirt-clients virtinst virt-manager
 ```
 
-CLI → Core Engine → Builder → VMware VMs
-↓
-Logs Collector
+### 2. Clone & Install Python Dependencies
 
+```bash
+git clone <repo-url> && cd Loader-Testing-Platform
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### 3. Build Only (No VM Needed)
+
+```bash
+# Create a dummy shellcode for testing the build pipeline
+printf '\x90\x90\x90\x90' > shellcodes/dummy.bin
+
+python3 cli.py -s shellcodes/dummy.bin --build-only
+# Output: build/bin/payload_<timestamp>.exe
+```
+
+### 4. Build + Test on VM
+
+Requires a Windows VM set up according to [Lab Setup Guide](./docs/lab_setup.md).
+
+```bash
+python3 cli.py -s shellcodes/payload.bin -t3 xor -t5 local -v "Windows Defender" --debug
+```
+
+---
+
+## CLI Usage
+
+```bash
+python3 cli.py -s <shellcode.bin> [stage flags] [options]
+```
+
+### Stage Flags
+
+| Flag | Stage | Options | Default |
+|------|-------|---------|---------|
+| `-t0` | Anti-Analysis | `none`, `antidebug` | `none` |
+| `-t1` | Storage | `rdata` | `rdata` |
+| `-t2` | Allocation | `local` | `local` |
+| `-t3` | Transformation | `none`, `xor`, `aes` | `none` |
+| `-t4` | Writing | `local` | `local` |
+| `-t5` | Execution | `local`, `monitors` | `local` |
+| `--api` | API Layer | `winapi`, `indirect`, `syscalls` | `winapi` |
+
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `--build-only` | Build payload without running on VM |
+| `-v VM1 VM2` | Target VMs (names from `config.py`) |
+| `--debug` | Enable debug output in payload |
+
+### Examples
+
+```bash
+# Build only, AES encryption
+python3 cli.py -s shellcodes/payload.bin --build-only -t3 aes -t5 monitors
+
+# Build + test on VM, XOR encryption, direct syscalls
+python3 cli.py -s shellcodes/payload.bin -t3 xor -t5 local --api syscalls -v "Windows Defender"
+
+# Full options
+python3 cli.py -s shellcodes/payload.bin -t0 antidebug -t1 rdata -t2 local \
+    -t3 aes -t4 local -t5 local --api indirect -v "Windows Defender" --debug
+```
+
+---
+
+## Architecture
+
+```
+                    ┌─────────────┐
+                    │   cli.py    │
+                    └──────┬──────┘
+                           │
+                    ┌──────▼──────┐
+                    │ core_engine │
+                    └──┬───────┬──┘
+                       │       │
+              ┌────────▼──┐ ┌──▼──────────┐
+              │  builder  │ │ vm_manager  │
+              │           │ │  (KVM/SSH)  │
+              └─────┬─────┘ └──┬───────┬──┘
+                    │          │       │
+               build/bin/   virsh   ssh/scp
+              payload.exe     │       │
+                           ┌──▼───────▼──┐
+                           │  Windows VM │
+                           │  (KVM/QEMU) │
+                           └─────────────┘
 ```
 
 | Component | Description |
-|---|---|
-| CLI | Interface for running experiments |
-| Core Engine | Coordinates the testing workflow |
-| Builder | Generates loader payloads |
-| VM Manager | Controls VM lifecycle using `vmrun` |
-| Logs Collector | Retrieves detection logs from VMs |
+|-----------|-------------|
+| `cli.py` | CLI entry point, parses flags |
+| `core_engine.py` | Orchestrates build → deploy → execute → collect |
+| `builder.py` | Encrypts shellcode, generates C++ header, calls `make` |
+| `vm_manager.py` | Controls VM via `virsh`, interacts via SSH/SCP (`sshpass`) |
+| `c2.py` | TCP listener that waits for reverse shell callback |
+| `config.py` | VM definitions, paths, credentials |
+| `definitions.py` | Maps CLI flags to C++ preprocessor defines |
+
+### Test Cycle
+
+When run with `-v`, the engine performs:
+
+1. **Revert** VM to `clean_snapshot` (`virsh snapshot-revert`)
+2. **Start** VM (`virsh start`)
+3. **Wait** for SSH to become available
+4. **Deploy** payload via SCP
+5. **Execute** payload via SSH
+6. **Listen** for C2 callback (30s timeout)
+7. **Collect** Defender/Sysmon logs if detection occurred
+8. **Shutdown** VM
 
 ---
 
-# Workflow
-
-1. Select techniques and shellcode
-2. Encrypt / prepare payload
-3. Build loader executable
-4. Reset VM to clean snapshot
-5. Deploy payload to VM
-6. Execute payload
-7. Collect logs from target system
-8. Store results for analysis
-
----
-
-# Project Structure
+## Project Structure
 
 ```
-
 .
-├── src/
-│   ├── api/                 # API execution modes
-│   │   ├── normal/          # Standard Windows API
-│   │   ├── indirect/        # Indirect syscall implementations
-│   │   └── direct/          # Direct syscall implementations
-│   │
-│   ├── core/                # Windows internal definitions & utilities
-│   │
-│   └── techniques/          # Loader techniques grouped by stage
+├── cli.py                          # CLI entry point
+├── Makefile                        # C++ build rules (MinGW + NASM)
+├── requirements.txt                # Python dependencies (tinyaes)
 │
 ├── controller/
-│   ├── modules/
-│   │   ├── builder.py       # Payload builder
-│   │   ├── crypto_utils.py  # Shellcode encryption utilities
-│   │   └── vm_manager.py    # VMware automation via vmrun
-│   │
-│   ├── core_engine.py       # Main orchestration logic
-│   └── config.py            # Paths, VM configuration, environment settings
+│   ├── config.py                   # VM config, paths, credentials
+│   ├── core_engine.py              # Test orchestration
+│   └── modules/
+│       ├── builder.py              # Payload build pipeline
+│       ├── crypto_utils.py         # XOR/AES encryption
+│       ├── definitions.py          # CLI flag → preprocessor define mapping
+│       └── vm_manager.py           # KVM/SSH VM management
 │
-├── logs_collector/          # Scripts for collecting logs from VMs
-│
-├── docs/                    # Research documentation
-│   ├── framework.md
+├── src/
+│   ├── main.cpp                    # Loader entry point (template)
+│   ├── api/
+│   │   ├── api_wrappers.h          # NT API abstraction (winapi/indirect/syscalls)
+│   │   ├── syscall.asm             # Direct syscall stubs (NASM)
+│   │   └── syscall.h               # Syscall declarations
+│   ├── core/
+│   │   ├── utils.h                 # DEBUG_MSG macro, utilities
+│   │   └── win_internals.h         # Windows internal structures
 │   └── techniques/
+│       ├── context.h               # TechniqueContext struct (shared state)
+│       ├── runner/                  # Stage dispatcher headers (#ifdef routing)
+│       │   ├── T1_storage.h
+│       │   ├── T2_allocation.h
+│       │   ├── T3_transformation.h
+│       │   ├── T4_writing.h
+│       │   └── T5_execution.h
+│       ├── 0_anti_analysis/        # L0 techniques
+│       ├── 1_storage/              # L1 techniques
+│       ├── 2_allocation/           # L2 techniques
+│       ├── 3_transformation/       # L3 techniques (XOR, AES)
+│       ├── 4_writing/              # L4 techniques
+│       └── 5_execution/            # L5 techniques
 │
-├── cli.py                   # CLI entry point
-│
-├── shellcodes/              # Sample shellcodes
-├── output/                  # Generated loader executables
-└── test_logs/               # Execution & detection logs
-
-````
+├── log_collectors/                 # PowerShell scripts for log collection
+├── shellcodes/                     # Input shellcode files (.bin)
+├── build/                          # Build artifacts (generated)
+├── test_logs/                      # Collected detection logs
+└── docs/                           # Documentation
+    ├── lab_setup.md                # VM setup guide
+    ├── methodology.md              # 6-stage framework design
+    └── techniques/                 # Per-technique documentation
+```
 
 ---
 
-# Technology Stack
+## Requirements
 
-| Technology | Purpose |
-|---|---|
-| Python | Experiment orchestration |
-| C++ | Loader implementation |
-| MinGW-w64 | Payload compilation |
-| VMware | Virtualized test environment |
-| vmrun | VM automation interface |
+| Component | Purpose |
+|-----------|---------|
+| Python 3.8+ | Orchestration |
+| MinGW-w64 (`x86_64-w64-mingw32-g++`) | Cross-compile loader for Windows |
+| NASM | Assemble direct syscall stubs |
+| KVM/QEMU + libvirt | VM hypervisor |
+| `virt-manager` | VM creation (GUI) |
+| `sshpass` | Password-based SSH automation |
+| Windows 10/11 VM | Test target |
 
----
-
-# Requirements
-
-- Python **3.8+**
-- **VMware Workstation / Player**
-- `vmrun` CLI
-- **MinGW-w64**
-- Windows test VMs
-
-VM setup requirements:
-
-- VMware Tools installed
-- Snapshot named `clean_snapshot`
-- Target AV / EDR installed
-- Sample submission disabled (to prevent payload leaks)
-
-Recommended storage: **≥100GB**
+Recommended host: Linux with 8GB+ RAM, 100GB+ disk.
 
 ---
 
-# Linux Build (Windows Target)
+## Documentation
 
-Use Linux as the development/build host and keep Windows as the payload execution target.
-
-Install build dependencies:
-
-```bash
-# Debian/Ubuntu
-sudo apt update
-sudo apt install -y mingw-w64 nasm python3 python3-pip make
-
-# Fedora
-sudo dnf install -y mingw64-gcc-c++ nasm python3 python3-pip make
-```
-
-Create and activate a Python virtual environment, then install dependencies:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-```
-
-Create a dummy shellcode file (compile-only validation):
-
-```bash
-mkdir -p shellcodes
-printf '\x90\x90\x90\x90' > shellcodes/dummy.bin
-```
-
-Build on Linux (without VM execution):
-
-```bash
-python cli.py -s shellcodes/dummy.bin --build-only
-```
-
-Verify output artifact:
-
-```bash
-ls -l build/bin/payload_*.exe
-file build/bin/payload_*.exe
-```
-
-Expected result: a `PE32+ executable for MS Windows` is generated in `build/bin/`.
+- [Lab Setup Guide](./docs/lab_setup.md) — how to create Windows VMs for testing
+- [Framework Methodology](./docs/methodology.md) — 6-stage loader model design
+- [Technique Docs](./docs/techniques/) — per-technique documentation
 
 ---
 
-# Documentation
+## Research Scope
 
-Detailed research documentation is available in:
+This platform is strictly for **security research and defensive analysis** in isolated lab environments. Generated payloads must never be distributed or executed outside controlled systems.
 
-```
-docs/
-```
+## Reference
 
-Contents include:
-
-* loader framework design
-* implemented techniques
-* lab environment configuration
-* detection analysis notes
-
----
-
-# Research Scope
-
-This platform is intended strictly for **security research and defensive analysis**.
-
-All experiments must be performed in **isolated lab environments**.
-Generated payloads must **never be distributed or executed outside controlled systems**.
-
----
-
-# License
-
-This project is intended for **educational and research purposes only**.
-
-# Reference
-
-- [Shhhloader](https://github.com/icyguider/Shhhloader/tree/main): A well-known shellcode loader, I use it for mapping techniques
+- [Shhhloader](https://github.com/icyguider/Shhhloader/tree/main) — shellcode loader used for technique mapping reference
