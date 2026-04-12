@@ -27,7 +27,7 @@ LISTENER_PORT = 4444
 # VMs Configuration (KVM)
 VMS_CONFIG = {
     "Windows Defender": {
-        "domain": "win11-01",             # virsh domain name
+        "domain": "Win11_Defender",             # virsh domain name
         "guest_ip": "192.168.122.101",    # Static IP of Windows guest
         "log_collector_host": os.path.join(PROJECT_ROOT, "log_collectors", "collect_defender.ps1")
     },
