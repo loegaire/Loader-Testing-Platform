@@ -1,297 +1,154 @@
-# Lab Setup Guide — Windows VM on KVM
+# Virtual Lab Setup Guide (KVM/Windows)
 
-This guide walks through creating a Windows VM for automated payload testing. The platform uses **KVM/libvirt** for VM management and **SSH** (via `sshpass`) for guest interaction.
+This guide outlines the standard procedure for provisioning Windows VMs on KVM for automated payload testing. The workflow relies on a **"Golden Image"** architecture to easily scale multiple AV/EDR testing environments.
 
-**End result:** a Windows VM with OpenSSH Server, registered in `config.py`, with a `clean_snapshot` that the test engine can revert to.
-
-**Time required:** ~30 minutes.
+⚠️ **EXECUTION RULES:** 
+- 🐧 **[Linux Host]**: Run these commands in your Linux terminal.
+- 🪟 **[Windows Guest]**: Run these commands inside an **Elevated PowerShell (Admin)** on the VM.
 
 ---
 
-## Prerequisites
+## Prerequisites (Linux Host)
 
-A Linux host with:
+Install the required KVM packages, utilities, and VirtIO drivers.
 
-- CPU virtualization enabled (VT-x / AMD-V), should have Desktop GUI (I used mate)
-- KVM, libvirt, virt-manager installed
-- `sshpass` installed
-- A Windows 10/11 ISO
-- VirtIO drivers ISO
-
-Install everything:
-
+🐧 **[Linux Host]**
 ```bash
-# Fedora
+# Fedora/RHEL
 sudo dnf install -y qemu-kvm libvirt virt-manager virt-install sshpass
+wget https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso
 
 # Debian/Ubuntu
-sudo apt install -y qemu-kvm libvirt-daemon-system libvirt-clients \
-    virtinst virt-manager sshpass
-```
-
-Download VirtIO drivers:
-
-```bash
+sudo apt install -y qemu-kvm libvirt-daemon-system libvirt-clients virtinst virt-manager sshpass
 wget https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso
 ```
 
-Ensure KVM networking is active:
+---
 
-```bash
-virsh -c qemu:///system net-list
-# Should show "default" as active. If not:
-# virsh -c qemu:///system net-start default
-# virsh -c qemu:///system net-autostart default
-```
+## Phase 0: Base VM Creation & OS Install
 
-> **Important:** Always use `virsh -c qemu:///system` (not plain `virsh`), because VMs created through `virt-manager` use the system connection. Plain `virsh` defaults to `qemu:///session` and won't see your VMs.
+1. Open `virt-manager` and create a new VM (4GB RAM, 2 CPUs, 60GB Disk).
+2. **Important:** Before finishing, check *"Customize configuration before install"*.
+   - Add the `virtio-win.iso` as a second CDROM.
+   - Change the OS Disk bus to **VirtIO**.
+   - Change the NIC Device model to **virtio**.
+3. **During Windows Install:**
+   - Click "Load driver" and browse to `viostor\w11\amd64` to detect the hard drive.
+   - To bypass Windows 11 internet requirement: Press `Shift+F10`, type `oobe\bypassnro`, and reboot.
+   - Create a local admin account (e.g., `tester` / `password`).
+4. **Post-Install:** Download and install [Spice Guest Tools](https://www.spice-space.org/download/windows/spice-guest-tools/spice-guest-tools-latest.exe) to fix display and network drivers automatically.
 
 ---
 
-## Step 1: Create VM in virt-manager
+## Phase 1: The "Golden Image" (Do this once)
 
-1. Open **virt-manager** → **Create a new virtual machine**
-2. Select **Local install media (ISO)** → browse to your Windows ISO
-3. Set **RAM: 4096 MB**, **CPUs: 2**
-4. Set **Disk: 60 GB**
-5. **Check "Customize configuration before install"** before clicking Finish
+Boot up your fresh Windows VM. We will configure it to allow automated SSH control and telemetry logging.
 
-In the customization screen:
-
-- **Add Hardware → Storage → Device type: CDROM** → select `virtio-win.iso`
-- Click on the main **Disk** → change **Disk bus** to **VirtIO**
-- Click on **NIC** → change **Device model** to **virtio**
-- Click **Begin Installation**
-
----
-
-## Step 2: Install Windows
-
-### Load VirtIO drivers during install
-
-When Windows asks you to select a drive, it won't see the VirtIO disk:
-
-1. Click **"Load driver"** → **Browse**
-2. Navigate to the VirtIO CD → `viostor\w11\amd64` (or `w10` for Win10)
-3. Select and load → the disk appears
-4. Continue installation normally
-
-### Bypass OOBE network requirement (Win11)
-
-Windows 11 forces you to connect to the internet during setup. To skip:
-
-1. Press **Shift + F10** to open Command Prompt
-2. Type `oobe\bypassnro` and press Enter
-3. PC reboots → now you'll see **"I don't have internet"** → **"Continue with limited setup"**
-
-### Create the test user
-
-- Create a **Local Account** (not Microsoft account)
-- Username: `tester`, Password: `123456` (or whatever you set in `config.py`)
-- This account will have Administrator privileges by default on a fresh install
-
----
-
-## Step 3: Install VirtIO network driver
-
-After Windows boots, you'll have no network because the VirtIO NIC driver isn't loaded yet.
-
-1. Open **Device Manager** (right-click Start → Device Manager)
-2. Find **Ethernet Controller** with a yellow warning icon
-3. Right-click → **Update driver** → **Browse my computer for drivers**
-4. Browse to the VirtIO CD → select `NetKVM\w11\amd64` (or `w10`)
-5. Install the driver
-
-Verify: open PowerShell and run `ipconfig` — you should now see an Ethernet adapter with a DHCP address.
-
-> **Tip:** You can also install all VirtIO drivers at once by running `virtio-win-gt-x64.msi` from the VirtIO CD.
-
----
-
-## Step 4: Set a static IP
-
-The test engine needs a predictable IP. Open PowerShell (Admin):
-
+### 1. Set Static IP & OpenSSH (Guest VM)
+A predictable IP is required for the Python controller.
+🪟 **[Windows Guest]**
 ```powershell
-# Check your adapter name first
-Get-NetAdapter
-# Usually "Ethernet" — adjust below if different
-
-# Remove existing DHCP config
+# 1. Set Static IP (Adjust InterfaceAlias and IP as needed)
 Remove-NetIPAddress -InterfaceAlias "Ethernet" -Confirm:$false
 Remove-NetRoute -InterfaceAlias "Ethernet" -Confirm:$false
-
-# Set static IP
 New-NetIPAddress -InterfaceAlias "Ethernet" -IPAddress 192.168.122.101 -PrefixLength 24 -DefaultGateway 192.168.122.1
 Set-DnsClientServerAddress -InterfaceAlias "Ethernet" -ServerAddresses 8.8.8.8
-```
 
-Verify from host:
-
-```bash
-ping 192.168.122.101
-```
-
----
-
-## Step 5: Install & configure OpenSSH Server
-
-On the Windows VM, PowerShell (Admin):
-
-```powershell
-# Install OpenSSH Server
+# 2. Install and Start OpenSSH Server
 Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
-
-# Start and enable on boot
+Set-Service -Name sshd -StartupType 'Automatic'
 Start-Service sshd
-Set-Service -Name sshd -StartupType Automatic
-
-# Allow SSH through firewall
-New-NetFirewallRule -Name "SSH" -DisplayName "OpenSSH Server" `
-    -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22
 ```
 
-Verify from host:
-
-```bash
-sshpass -p '123456' ssh -o StrictHostKeyChecking=no tester@192.168.122.101 "echo hello"
-# Should print "hello" with no errors
-```
-
-If it doesn't work, check:
-- Is `sshd` running? (`Get-Service sshd` on VM)
-- Is firewall rule active? (`Get-NetFirewallRule -Name SSH` on VM)
-- Can you ping the VM? (`ping 192.168.122.101` from host)
-
----
-
-## Step 6: Install Sysmon (optional, recommended)
-
-Sysmon provides detailed execution logs for detection analysis.
-
-On the VM, PowerShell (Admin):
-
+### 2. Critical OS Tweaks (Guest VM)
+Disable UAC restrictions for SSH (crucial for log extraction) and temporarily disable protections.
+🪟 **[Windows Guest]**
 ```powershell
-Invoke-WebRequest -Uri "https://download.sysinternals.com/files/Sysmon.zip" -OutFile "$env:TEMP\Sysmon.zip"
-Expand-Archive "$env:TEMP\Sysmon.zip" -DestinationPath "$env:TEMP\Sysmon" -Force
-& "$env:TEMP\Sysmon\sysmon64.exe" -accepteula -i
+# Disable UAC for Remote/SSH Connections 
+reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System /v LocalAccountTokenFilterPolicy /t REG_DWORD /d 1 /f
+
+# Disable Windows Firewall & Defender Real-time Protection temporarily
+Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False
+Set-MpPreference -DisableRealtimeMonitoring $true
 ```
 
----
+### 3. Install Telemetry - Sysmon (Guest VM)
+🪟 **[Windows Guest]**
+```powershell
+Invoke-WebRequest -Uri "https://live.sysinternals.com/Sysmon64.exe" -OutFile "C:\Users\Public\Sysmon64.exe"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/SwiftOnSecurity/sysmon-config/master/sysmonconfig-export.xml" -OutFile "C:\Users\Public\sysmonconfig.xml"
+C:\Users\Public\Sysmon64.exe -accepteula -i C:\Users\Public\sysmonconfig.xml
+```
 
-## Step 7: Configure security products
-
-**For a Defender-only VM:**
-
-- Ensure Windows Defender Real-time Protection is **ON**
-- Run Windows Update to get latest signatures
-- Keep Windows Firewall on (SSH rule from Step 5 will persist)
-
-**For third-party AV/EDR:**
-
-- Install the product
-- Update virus definitions
-
-**For all VMs — disable sample submission:**
-
-- **Automatic Sample Submission** → OFF
-- **Cloud Protection** → OFF
-- **Telemetry / Data Sharing** → OFF
-
-This prevents your test payloads from being uploaded to vendor cloud services.
-
----
-
-## Step 8: Create snapshot
-
-Shut down the VM cleanly, then create the snapshot:
-
+### 4. Create Base Snapshot (Linux Host)
+Shut down the VM cleanly from within Windows. Then, take the base snapshot.
+🐧 **[Linux Host]**
 ```bash
-virsh -c qemu:///system shutdown <domain-name>
-# Wait for VM to fully shut down
+# Verify the VM is shut off
 virsh -c qemu:///system list --all
-# Confirm state is "shut off"
 
-virsh -c qemu:///system snapshot-create-as <domain-name> clean_snapshot "Ready for testing"
+# Take the snapshot (Replace 'win11-base' with your VM name)
+virsh -c qemu:///system snapshot-create-as --domain win11-base --name "clean_install" --description "Base OS with tools, no AV"
 ```
-
-> Replace `<domain-name>` with your VM name (e.g., `win11-01`). Check with `virsh -c qemu:///system list --all`.
 
 ---
 
-## Step 9: Register VM in config.py
+## Phase 2: The "Test VMs" (Repeat per AV/EDR)
 
-Edit `controller/config.py`:
+We will clone the Golden Image to create specific testing environments.
+
+### 1. Clone the Golden Image (Linux Host)
+🐧 **[Linux Host]**
+```bash
+virt-clone -c qemu:///system --original win11-base --name win11-defender --auto-clone
+virsh -c qemu:///system start win11-defender
+```
+
+### 2. Configure Security Product (Guest VM)
+Log into the new VM. If setting up **Windows Defender**, re-enable protection but strictly disable OPSEC-leaking features (Cloud, Auto-submission).
+🪟 **[Windows Guest]**
+```powershell
+# 1. Re-enable Protection & Firewall
+Set-MpPreference -DisableRealtimeMonitoring $false
+Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled True
+
+# 2. OPSEC: Disable Cloud Protection & Automatic Sample Submission
+Set-MpPreference -MAPSReporting Disable
+Set-MpPreference -SubmitSamplesConsent NeverSend
+Set-MpPreference -DisableBlockAtFirstSight $true
+
+# 3. Update Virus Definitions
+Update-MpSignature
+```
+*(For 3rd-party EDRs, install their agents manually and disable Cloud/Telemetry via their GUI).*
+
+### 3. Create Testing Snapshot (Linux Host)
+Reboot the VM once, then shut it down cleanly. 
+🐧 **[Linux Host]**
+```bash
+# Take the testing snapshot (Must be named EXACTLY 'clean_snapshot')
+virsh -c qemu:///system snapshot-create-as --domain win11-defender --name "clean_snapshot" --description "Ready for automated testing"
+```
+
+---
+
+## Phase 3: Integration
+
+Register your new VM in the testing framework by editing `controller/config.py`:
 
 ```python
-# Guest SSH
-GUEST_USER = "tester"
-GUEST_PASSWORD = "123456"
-
 # VMs Configuration (KVM)
 VMS_CONFIG = {
     "Windows Defender": {
-        "domain": "win11-01",                # virsh domain name
-        "guest_ip": "192.168.122.101",       # static IP set in Step 4
+        "domain": "win11-defender",          # virsh domain name
+        "guest_ip": "192.168.122.101",       # static IP set in Phase 1
         "log_collector_host": os.path.join(PROJECT_ROOT, "log_collectors", "collect_defender.ps1")
     },
-    # Add more VMs here, e.g.:
+    # Add cloned VMs here:
     # "Kaspersky": {
     #     "domain": "win11-kaspersky",
     #     "guest_ip": "192.168.122.102",
-    #     "log_collector_host": os.path.join(PROJECT_ROOT, "log_collectors", "collect_all.ps1")
+    #     ...
     # },
 }
 ```
-
----
-
-## Step 10: Test the full pipeline
-
-```bash
-python3 cli.py -s shellcodes/dummy.bin -t3 none -t5 local -v "Windows Defender" --debug
-```
-
-Expected output:
-
-```
-[INFO] - Compiling with flags: ...
-[INFO] - Build Success: build/bin/payload_XXXXX.exe
-[INFO] - === Starting Test Cycle on Windows Defender ===
-[INFO] - Reverting to snapshot: clean_snapshot
-[INFO] - Starting VM...
-[INFO] - Waiting for guest SSH...
-[INFO] - VM is ready!
-[INFO] - Deploying: payload_XXXXX.exe -> C:\Users\tester\Desktop\payload.exe
-...
-```
-
----
-
-## Adding More VMs
-
-To test against multiple AV products:
-
-1. Clone an existing VM: `virt-clone -c qemu:///system --original win11-01 --name win11-kaspersky --auto-clone`
-2. Start it, change the static IP (e.g., `192.168.122.102`)
-3. Install the AV/EDR product
-4. Disable sample submission
-5. Shut down and snapshot: `virsh -c qemu:///system snapshot-create-as win11-kaspersky clean_snapshot`
-6. Add to `VMS_CONFIG` in `config.py`
-
----
-
-## Troubleshooting
-
-| Problem | Solution |
-|---------|----------|
-| `virsh list` shows nothing | Use `virsh -c qemu:///system list --all` |
-| VM has no network adapter | Install VirtIO NIC driver from `NetKVM\w11\amd64` on VirtIO CD |
-| Can't attach CDROM to running VM | Shut down VM first, then add CDROM, then start |
-| Windows OOBE requires internet | Press Shift+F10, type `oobe\bypassnro` |
-| `ping` VM doesn't work | Check static IP is set, check VM has network driver |
-| SSH connection refused | Check `sshd` service is running, firewall rule exists for port 22 |
-| SSH `Connection reset by peer` | Run `sshd -d` on VM for debug output, check host keys exist |
-| `sshpass: command not found` | Install: `sudo dnf install sshpass` or `sudo apt install sshpass` |
-| `virsh snapshot-revert` fails | Check snapshot exists: `virsh -c qemu:///system snapshot-list <domain>` |
-| SCP file gets deleted on arrival | AV blocked it — this is a valid test result ("Transfer Blocked") |
