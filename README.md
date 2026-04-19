@@ -15,6 +15,8 @@ Built on a [6-stage loader model](./docs/methodology.md) where each stage (anti-
 
 ### 1. Install Host Dependencies
 
+**Linux (recommended — required for VM testing):**
+
 ```bash
 # Fedora
 sudo dnf install -y mingw64-gcc-c++ nasm python3 python3-pip make sshpass \
@@ -24,6 +26,8 @@ sudo dnf install -y mingw64-gcc-c++ nasm python3 python3-pip make sshpass \
 sudo apt install -y mingw-w64 nasm python3 python3-pip make sshpass \
     qemu-kvm libvirt-daemon-system libvirt-clients virtinst virt-manager
 ```
+
+**Windows (build only, no VM testing):** See [Windows build guide](./docs/build_windows.md) — requires MSYS2.
 
 ### 2. Clone & Install Python Dependencies
 
@@ -216,6 +220,7 @@ Recommended host: Linux with 8GB+ RAM, 100GB+ disk.
 ## Documentation
 
 - [Lab Setup Guide](./docs/lab_setup.md) — how to create Windows VMs for testing
+- [Windows Build Guide](./docs/build_windows.md) — MSYS2 toolchain setup for Windows hosts
 - [Framework Methodology](./docs/methodology.md) — 6-stage loader model design
 - [Technique Docs](./docs/techniques/) — per-technique documentation
 

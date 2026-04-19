@@ -1,10 +1,14 @@
 .PHONY: build clean
 
 # --- Trình biên dịch & Assembler ---
-# CC: Trình biên dịch C++ (MinGW)
-# AS: Assembler (NASM)
-CC = x86_64-w64-mingw32-g++
-AS = nasm
+# Chỉ đặt mặc định khi CC/AS đến từ Make's built-in (origin=default).
+# Giữ nguyên nếu user đã override qua env hoặc command-line (origin=environment/command line).
+ifeq ($(origin CC),default)
+CC := x86_64-w64-mingw32-g++
+endif
+ifeq ($(origin AS),default)
+AS := nasm
+endif
 
 # --- Thư mục ---
 SRC_DIR = src

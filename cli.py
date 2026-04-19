@@ -2,6 +2,11 @@ import argparse
 import os
 import sys
 import time
+
+# Force UTF-8 stdout so box-drawing characters render on Windows (cp1252)
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 from controller.modules.definitions import STAGE_FLAGS
 
 # --- MÀU SẮC CHO TERMINAL (ANSI Codes) ---
