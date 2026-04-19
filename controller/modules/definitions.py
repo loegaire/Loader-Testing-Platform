@@ -29,8 +29,9 @@ STAGE_FLAGS = {
     },
     # -t5
     't5': {
-        'local': '-DT5_EXEC_LOCAL',
+        'local':    '-DT5_EXEC_LOCAL',
         'monitors': '-DT5_EXEC_DISPLAY_MONITORS',
+        'fiber':    '-DT5_EXEC_FIBER',
     },
 }
 
