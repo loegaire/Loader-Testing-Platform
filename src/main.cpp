@@ -17,6 +17,7 @@
 
 PVOID g_syscall_addr = NULL;
 DWORD g_ssn_NtAllocateVirtualMemory = 0;
+DWORD g_ssn_NtProtectVirtualMemory = 0;
 DWORD g_ssn_NtCreateThreadEx = 0;
 DWORD g_ssn_NtWaitForSingleObject = 0;
 
