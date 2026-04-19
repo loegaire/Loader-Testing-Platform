@@ -13,7 +13,8 @@ STAGE_FLAGS = {
     },
     # -t2
     't2': {
-        'local': '-DT2_ALLOC_LOCAL',
+        'local':    '-DT2_ALLOC_LOCAL',
+        'local_rw': '-DT2_ALLOC_LOCAL_RW',
     },
     # -t3
     't3': {
@@ -23,7 +24,8 @@ STAGE_FLAGS = {
     },
     # -t4
     't4': {
-        'local': '-DT4_WRITE_LOCAL',
+        'local':    '-DT4_WRITE_LOCAL',
+        'local_rx': '-DT4_WRITE_LOCAL_RX',
     },
     # -t5
     't5': {
