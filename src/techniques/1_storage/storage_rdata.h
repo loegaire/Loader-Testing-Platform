@@ -12,9 +12,9 @@ extern unsigned int  PAYLOAD_KEY_LEN;
 extern unsigned char PAYLOAD_NONCE[];
 extern unsigned int  PAYLOAD_NONCE_LEN;
 
-inline void Stage1_Storage_Rdata(TechniqueContext* ctx)
+inline BOOL Stage1_Storage_Rdata(TechniqueContext* ctx)
 {
-    if (!ctx) return;
+    if (!ctx) return FALSE;
 
     ctx->length = PAYLOAD_LEN;
 
@@ -27,7 +27,7 @@ inline void Stage1_Storage_Rdata(TechniqueContext* ctx)
     );
 
     if (!ctx->data)
-        return;
+        return FALSE;
 
     memcpy(ctx->data, PAYLOAD, ctx->length);
 
@@ -42,4 +42,6 @@ inline void Stage1_Storage_Rdata(TechniqueContext* ctx)
               "Payload copied from rdata to heap (%llu bytes)",
               ctx->length);
 #endif
+
+    return TRUE;
 }

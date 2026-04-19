@@ -4,8 +4,8 @@
 STAGE_FLAGS = {
     # -t0
     't0': {
-        'none':     '',
-        'antidebug': '-DEVASION_CHECKS_ENABLED',
+        'none':      '-DT0_ANTIANALYSIS_NONE',
+        'antidebug': '-DT0_ANTIANALYSIS_DEBUG',
     },
     # -t1: chưa có flag (storage mặc định là rdata)
     't1': {
