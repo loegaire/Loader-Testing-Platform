@@ -35,7 +35,17 @@ def run_single_test(vm_name, payload_path, build_options):
 
     # ĐƯA VÀO TRY-FINALLY ĐỂ ĐẢM BẢO LUÔN CLEANUP VM DÙ CÓ LỖI GÌ XẢY RA
     try:
-        # 3. Connection Test & Prep
+        # 3a. Apply latest Sysmon config from host (service already running in snapshot)
+        if os.path.isfile(SYSMON_CONFIG_HOST):
+            if vm.copy_to_guest(SYSMON_CONFIG_HOST, GUEST_SYSMON_CONFIG):
+                vm.run_program("sysmon.exe", f"-c {GUEST_SYSMON_CONFIG}")
+                time.sleep(1)  # brief settle before payload events start
+            else:
+                logging.warning("Sysmon config SCP failed; guest keeps prior ruleset")
+        else:
+            logging.warning(f"Sysmon config not found at {SYSMON_CONFIG_HOST}; skipping update")
+
+        # 3b. Connection Test & Prep
         collector_script = vm_conf['log_collector_host']
         if not vm.copy_to_guest(collector_script, GUEST_LOG_COLLECTOR):
             status, log_data = "FAILED", "Connection Test Failed (Copy Collector)"
