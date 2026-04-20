@@ -215,12 +215,17 @@ $procEvents = Get-WinEvent -FilterHashtable @{
 } -ErrorAction SilentlyContinue
 
 if ($procEvents) {
-    # Only log processes related to payload or suspicious spawns
+    # Only log processes related to payload or shellcode-spawned children.
+    # Includes 'explorer' to catch cmd/powershell spawns from shellcode that
+    # was injected into explorer.exe via the remote chain (T2.3 + T4.3 + T5.4).
     $filtered = $procEvents | Where-Object {
         $xml = [xml]$_.ToXml()
         $img = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'Image' }).'#text'
         $parent = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'ParentImage' }).'#text'
-        ($img -match 'Desktop') -or ($parent -match 'Desktop') -or ($parent -match 'payload')
+        ($img -match 'Desktop') -or
+        ($parent -match 'Desktop') -or
+        ($parent -match 'payload') -or
+        ($parent -match 'explorer')
     }
 
     if ($filtered) {
