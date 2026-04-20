@@ -37,7 +37,6 @@ STAGE_FLAGS = {
 
 API_FLAGS = {
     'winapi':   '',
-    'indirect': '-DUSE_INDIRECT_WINAPI',
     'syscalls': '-DUSE_DIRECT_SYSCALLS',
 }
 

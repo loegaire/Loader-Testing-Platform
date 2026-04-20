@@ -44,8 +44,7 @@ def print_pipeline_banner(options, shellcode_path):
     s4_write   = options.get('t4', 'local').upper()
     s5_exec    = options.get('t5', 'classic').upper()
     api_mode   = options.get('api_method', 'winapi').upper()
-    api_color  = Colors.CYAN if "SYSCALL" in api_mode else \
-                 (Colors.WARNING if "INDIRECT" in api_mode else Colors.FAIL)
+    api_color  = Colors.CYAN if "SYSCALL" in api_mode else Colors.FAIL
 
     sc_name = os.path.basename(shellcode_path)
 
@@ -107,8 +106,8 @@ def main():
 
     # --- API LAYER ---
     parser.add_argument("--api", dest="api_method", metavar="MODE", default="winapi",
-                        choices=["winapi", "indirect", "syscalls"],
-                        help="API Layer:                   winapi | indirect | syscalls")
+                        choices=["winapi", "syscalls"],
+                        help="API Layer:                   winapi | syscalls")
 
     # --- MISC ---
     parser.add_argument("-v", "--vms", nargs='*', metavar="VM",
