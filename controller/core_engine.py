@@ -63,45 +63,50 @@ def run_single_test(vm_name, payload_path, build_options):
             vm.run_program(GUEST_PAYLOAD_PATH, no_wait=True)
             t.join() # Chờ C2 listener kết thúc (tối đa 30s)
 
-        # 6. Analyze Results
+        # 6. Determine run status
         if c2.success:
             status = "SUCCESS (Bypass)"
             log_data = "Reverse Shell Established!"
+        elif not payload_deployed:
+            status = "FAILED (Transfer Blocked - OnWrite)"
+            log_data = "Payload blocked/deleted during SCP transfer."
         else:
-            if not payload_deployed:
-                status = "FAILED (Transfer Blocked - OnWrite)"
-                log_data = "Payload blocked/deleted during SCP transfer."
-            else:
-                # Lúc này chưa biết là Static hay Runtime, phải dựa vào Log để phán quyết
-                status = "FAILED (Execution Blocked)"
-                log_data = "Payload copied but no shell received. AV intervened."
+            status = "FAILED (Execution Blocked)"
+            log_data = "Payload copied but no shell received. AV intervened."
 
-            # --- COLLECT LOGS ---
-            logging.info(f"Test Failed: {status}. Collecting Artifacts...")
-            
-            # Cẩn thận: Nếu EDR ngắt mạng, lệnh chạy gom log này có thể thất bại/timeout
+        # 7. Collect telemetry — run regardless of outcome so that Sysmon
+        #    events are available for stage-level analysis. Only skip if
+        #    the payload never reached the guest (TB case above).
+        if payload_deployed:
+            logging.info(f"Collecting telemetry (status so far: {status})")
+
+            # Small settle time so Sysmon can flush late events from execution
+            time.sleep(2)
+
             vm.run_program(
-                r"powershell.exe", 
+                r"powershell.exe",
                 f"-ExecutionPolicy Bypass -File {GUEST_LOG_COLLECTOR}"
             )
-            time.sleep(5) # Chờ Script tạo file txt xong
+            time.sleep(5)  # wait for the collector to finish writing output
 
-            host_log_path = os.path.join(PROJECT_ROOT, "test_logs", f"{vm_name}_{int(time.time())}.txt")
-            
-            # Kéo file log về
+            host_log_path = os.path.join(
+                PROJECT_ROOT, "test_logs",
+                f"{vm_name}_{int(time.time())}.txt"
+            )
+
             if vm.copy_from_guest(GUEST_LOG_OUTPUT, host_log_path):
                 try:
                     with open(host_log_path, 'r', encoding='utf-8') as f:
                         log_content = f.read()
                         log_data += f"\n\n=== DEFENDER/SYSMON LOGS ===\n{log_content}"
-                        
-                        # (Tùy chọn) Phân tích sâu hơn từ Log Content để đổi status thành Static hay Runtime
+
+                        # Hint: Defender quarantine action marker in log
                         if "Action:   Quarantine" in log_content:
                             status += " - Verified by Defender Log"
                 except Exception as e:
                     log_data += f"\n[WARNING] Could not read log file on Host: {e}"
             else:
-                log_data += "\n[WARNING] Failed to copy logs from VM. The VM might be Network-Isolated by EDR/AV."
+                log_data += "\n[WARNING] Failed to copy logs from VM (network-isolated by EDR/AV?)."
 
     except Exception as e:
         logging.error(f"FATAL ERROR during VM cycle: {e}")
