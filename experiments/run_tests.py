@@ -24,8 +24,10 @@ Usage:
 """
 
 import argparse
+import collections
 import csv
 import hashlib
+import logging
 import os
 import sys
 import time
@@ -35,8 +37,30 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(HERE)
 sys.path.insert(0, REPO_ROOT)
 
-from controller import core_engine
-from controller.config import VMS_CONFIG, PROJECT_ROOT, LOGS_DIR
+from controller import core_engine  # noqa: E402 — import after sys.path tweak
+from controller.config import VMS_CONFIG, PROJECT_ROOT, LOGS_DIR  # noqa: E402
+
+
+# ---------------------------------------------------------------------------
+# Logging setup (overrides core_engine's basicConfig default of INFO)
+# ---------------------------------------------------------------------------
+
+def configure_logging(verbose_count):
+    """
+    verbose_count == 0 -> WARNING (quiet, default)
+    verbose_count == 1 -> INFO    (-v)
+    verbose_count >= 2 -> DEBUG   (-vv)
+    """
+    level = logging.WARNING
+    if verbose_count == 1:
+        level = logging.INFO
+    elif verbose_count >= 2:
+        level = logging.DEBUG
+
+    root = logging.getLogger()
+    root.setLevel(level)
+    for h in root.handlers:
+        h.setLevel(level)
 
 
 # ---------------------------------------------------------------------------
@@ -258,7 +282,67 @@ def run_all(shellcode_path, vm_name, phase_keys, resume_csv=None):
         f_csv.close()
 
     print(f"\n[done] matrix: {out_csv}")
+    summarize_csv(out_csv)
     return out_csv
+
+
+# ---------------------------------------------------------------------------
+# Summary (used both at end of batch and via --summarize)
+# ---------------------------------------------------------------------------
+
+def summarize_csv(csv_path):
+    if not os.path.isfile(csv_path):
+        print(f"[!] CSV not found: {csv_path}")
+        return
+
+    by_phase = collections.defaultdict(collections.Counter)
+    by_phase_time = collections.defaultdict(float)
+    total_time = 0.0
+    total_runs = 0
+    reps_per_id = collections.defaultdict(list)
+
+    with open(csv_path, "r", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            phase = row["id"][0] if row["id"] else "?"
+            code = row["code"]
+            by_phase[phase][code] += 1
+            try:
+                t = float(row["wall_time_s"])
+            except (ValueError, TypeError):
+                t = 0.0
+            by_phase_time[phase] += t
+            total_time += t
+            total_runs += 1
+            reps_per_id[row["id"]].append(code)
+
+    print("\n" + "=" * 60)
+    print(" Experiment summary")
+    print("=" * 60)
+
+    phase_names = {"A": "Sanity", "B": "Main (RWX)", "C": "W^X", "D": "Antidebug"}
+    for phase in sorted(by_phase):
+        counts = by_phase[phase]
+        total = sum(counts.values())
+        t = by_phase_time[phase]
+        pretty = ", ".join(f"{k}={v}" for k, v in sorted(counts.items()))
+        name = phase_names.get(phase, phase)
+        print(f"Phase {phase} ({name:<12}): {total:2d} runs | {pretty:<32s} | {t/60:5.1f} min")
+
+    # Flag disagreements within a config id (only meaningful if rep>1)
+    disagreements = [
+        (cid, codes) for cid, codes in reps_per_id.items()
+        if len(codes) > 1 and len(set(codes)) > 1
+    ]
+    if disagreements:
+        print("\n[!] Non-deterministic outcomes within same config id:")
+        for cid, codes in disagreements:
+            print(f"    {cid}: {codes}")
+
+    m = int(total_time // 60)
+    s = int(total_time % 60)
+    print(f"\nTotal runs: {total_runs}  |  Total wall time: {m}m {s}s")
+    print(f"CSV: {csv_path}")
+    print("=" * 60)
 
 
 # ---------------------------------------------------------------------------
@@ -267,9 +351,10 @@ def run_all(shellcode_path, vm_name, phase_keys, resume_csv=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[1])
-    parser.add_argument("-s", "--shellcode", required=True,
-                        help="Path to shellcode .bin (relative to repo or absolute)")
-    parser.add_argument("-v", "--vm", default="Windows Defender",
+    parser.add_argument("-s", "--shellcode",
+                        help="Path to shellcode .bin (relative to repo or absolute). "
+                             "Required unless --dry-run or --summarize is used.")
+    parser.add_argument("--vm", default="Windows Defender",
                         help="VM name from controller/config.py (default: 'Windows Defender')")
     parser.add_argument("--phases", default="A,B,C,D",
                         help="Comma-separated phase keys (A/B/C/D). Default: all.")
@@ -277,7 +362,20 @@ def main():
                         help="Existing CSV to resume; rows already in CSV are skipped.")
     parser.add_argument("--dry-run", action="store_true",
                         help="Print the test plan and exit without running.")
+    parser.add_argument("--summarize", metavar="CSV",
+                        help="Print summary of an existing experiment CSV and exit "
+                             "(no new runs).")
+    parser.add_argument("-v", "--verbose", action="count", default=0,
+                        help="Increase log verbosity: -v for INFO, -vv for DEBUG. "
+                             "Default is WARNING only.")
     args = parser.parse_args()
+
+    configure_logging(args.verbose)
+
+    # --summarize: re-analyze existing CSV and exit
+    if args.summarize:
+        summarize_csv(args.summarize)
+        return
 
     phase_keys = [p.strip().upper() for p in args.phases.split(",") if p.strip()]
     for k in phase_keys:
@@ -295,6 +393,9 @@ def main():
         print(f"\nTotal: {total} runs")
         return
 
+    # From here on, we actually execute runs — require shellcode + valid VM.
+    if not args.shellcode:
+        parser.error("--shellcode is required unless --dry-run or --summarize is given.")
     if args.vm not in VMS_CONFIG:
         print(f"[!] VM '{args.vm}' not in controller/config.py")
         print(f"    Available: {list(VMS_CONFIG.keys())}")
