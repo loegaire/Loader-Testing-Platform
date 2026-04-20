@@ -16,6 +16,7 @@ STAGE_FLAGS = {
         'local':    '-DT2_ALLOC_LOCAL',
         'local_rw': '-DT2_ALLOC_LOCAL_RW',
         'remote':   '-DT2_ALLOC_REMOTE',
+        'spawn':    '-DT2_ALLOC_SPAWN',
     },
     # -t3
     't3': {
