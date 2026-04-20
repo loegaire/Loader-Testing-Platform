@@ -36,9 +36,13 @@ class PayloadBuilder:
         ciphertext = output["ciphertext"]
         key = output.get("key", b"")
         nonce = output.get("nonce", b"")
+        storage_technique = self.options.get("t1", "rdata")
         
         # Shellcode
-        lines.append(f"unsigned char PAYLOAD[] = {self._format_cpp_array(ciphertext)};")
+        if storage_technique == "data":
+            lines.append(f"unsigned char PAYLOAD[] = {self._format_cpp_array(ciphertext)};")
+        else:
+            lines.append(f"const unsigned char PAYLOAD[] = {self._format_cpp_array(ciphertext)};")
         lines.append(f"unsigned int  PAYLOAD_LEN = {len(ciphertext)};")
         lines.append("")
         

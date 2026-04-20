@@ -5,7 +5,7 @@
 #include "payload_data.h"
 
 // Các biến toàn cục do Python tạo ra
-extern unsigned char PAYLOAD[];
+extern const unsigned char PAYLOAD[];
 extern unsigned int  PAYLOAD_LEN;
 extern unsigned char PAYLOAD_KEY[];
 extern unsigned int  PAYLOAD_KEY_LEN;

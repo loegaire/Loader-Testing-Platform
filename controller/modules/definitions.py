@@ -4,12 +4,14 @@
 STAGE_FLAGS = {
     # -t0
     't0': {
-        'none':      '-DT0_ANTIANALYSIS_NONE',
-        'antidebug': '-DT0_ANTIANALYSIS_DEBUG',
+        'none':       '-DT0_ANTIANALYSIS_NONE',
+        'antidebug':  '-DT0_ANTIANALYSIS_DEBUG',
+        'sleep_skew': '-DT0_ANTIANALYSIS_SLEEP_SKEW',
     },
-    # -t1: chưa có flag (storage mặc định là rdata)
+    # -t1
     't1': {
         'rdata': '-DT1_STORAGE_RDATA',
+        'data':  '-DT1_STORAGE_DATA',
     },
     # -t2
     't2': {
@@ -20,9 +22,12 @@ STAGE_FLAGS = {
     },
     # -t3
     't3': {
-        'none': '-DT3_TRANSFORM_NONE',
-        'xor':  '-DT3_TRANSFORM_XOR',
-        'aes':  '-DT3_TRANSFORM_AES',
+        'none':     '-DT3_TRANSFORM_NONE',
+        'xor':      '-DT3_TRANSFORM_XOR',
+        'aes':      '-DT3_TRANSFORM_AES',
+        'rc4':      '-DT3_TRANSFORM_RC4',
+        'chacha20': '-DT3_TRANSFORM_CHACHA20',
+        'bitwise':  '-DT3_TRANSFORM_BITWISE',
     },
     # -t4
     't4': {

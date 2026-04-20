@@ -38,7 +38,7 @@ def run_single_test(vm_name, payload_path, build_options):
         # 3a. Apply latest Sysmon config from host (service already running in snapshot)
         if os.path.isfile(SYSMON_CONFIG_HOST):
             if vm.copy_to_guest(SYSMON_CONFIG_HOST, GUEST_SYSMON_CONFIG):
-                vm.run_program("sysmon.exe", f"-c {GUEST_SYSMON_CONFIG}")
+                vm.run_program("sysmon64.exe", f"-c {GUEST_SYSMON_CONFIG}")
                 time.sleep(1)  # brief settle before payload events start
             else:
                 logging.warning("Sysmon config SCP failed; guest keeps prior ruleset")

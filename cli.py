@@ -81,8 +81,8 @@ def main():
 
     # --- STAGE FLAGS ---
     parser.add_argument("-t0", dest="t0", metavar="TECH", default="none",
-                        choices=["none", "antidebug"],
-                        help="Stage 0 - Anti-Analysis")
+                        choices=list(STAGE_FLAGS['t0'].keys()),
+                        help=f"Stage 0 - Anti-Analysis ({', '.join(STAGE_FLAGS['t0'].keys())})")
 
     parser.add_argument("-t1", dest="t1", metavar="TECH", default="rdata",
                         choices=list(STAGE_FLAGS['t1'].keys()),
