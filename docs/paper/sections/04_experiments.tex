@@ -18,7 +18,9 @@
 \subsection{Implemented Techniques}
 
 Table~\ref{tab:techniques} lists the techniques currently implemented in the platform.
-Three groups of techniques are interdependent: \texttt{T2.1}~(\texttt{local}, RWX in one step) pairs with \texttt{T4.1}~(plain \texttt{memcpy}); \texttt{T2.2}~(\texttt{local\_rw}, RW only) pairs with \texttt{T4.2}~(\texttt{memcpy} followed by a flip to RX); and \texttt{T2.3}~(\texttt{remote}) pairs with \texttt{T4.3}~(\texttt{remote}) and \texttt{T5.4}~(\texttt{remote\_thread}) because the remote chain shares the target-process handle through the context.
+Several groups of techniques are interdependent.
+\texttt{T2.1}~(\texttt{local}, RWX in one step) pairs with \texttt{T4.1}~(plain \texttt{memcpy}); \texttt{T2.2}~(\texttt{local\_rw}, RW only) pairs with \texttt{T4.2}~(\texttt{memcpy} followed by a flip to RX).
+Both \texttt{T2.3}~(\texttt{remote}, find existing \texttt{explorer.exe}) and \texttt{T2.4}~(\texttt{spawn}, create a fresh \texttt{notepad.exe} suspended) pair with \texttt{T4.3}~(\texttt{remote}) and \texttt{T5.4}~(\texttt{remote\_thread}); the two L2 variants differ in how the target process handle is obtained but share the same write/execute path.
 Other L2/L4/L5 combinations leave the buffer in a non-executable state, address an absent local buffer, or never reach the target process, and will abort at the corresponding stage.
 
 \begin{table}[htbp]
@@ -35,7 +37,8 @@ Other L2/L4/L5 combinations leave the buffer in a non-executable state, address 
         L1 & T1.1 & .rdata embed        & Binary \texttt{.rdata} section \\
         L2 & T2.1 & Local RWX           & \texttt{VirtualAlloc} (RWX) \\
         L2 & T2.2 & Local RW            & \texttt{VirtualAlloc} (RW only) \\
-        L2 & T2.3 & Remote alloc        & \texttt{CreateProcess} suspended + \texttt{VirtualAllocEx} \\
+        L2 & T2.3 & Remote alloc        & \texttt{OpenProcess}(existing \texttt{explorer.exe}) + \texttt{VirtualAllocEx} \\
+        L2 & T2.4 & Spawn alloc         & \texttt{CreateProcess}(\texttt{notepad.exe}, suspended) + \texttt{VirtualAllocEx} \\
         L3 & T3.0 & None                & Plaintext \\
         L3 & T3.1 & XOR                 & Multi-byte XOR key \\
         L3 & T3.2 & AES-128-CTR         & \texttt{tiny-AES-c} library \\
