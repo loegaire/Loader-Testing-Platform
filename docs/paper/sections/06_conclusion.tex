@@ -3,10 +3,13 @@
 % =============================================================================
 \section{Conclusion}
 
-This paper presented a six-stage pipeline model for the systematic decomposition of shellcode loaders into discrete functional stages: Anti-Analysis, Storage, Allocation, Transformation, Writing, and Execution.
-Built upon this model, we developed a dual-purpose knowledge platform that bridges offensive and defensive security research---enabling structured loader generation for red teams and stage-aware detection mapping for blue teams.
+This paper presented a six-stage pipeline model that decomposes a shellcode loader into sequential functional stages---Anti-Analysis, Storage, Allocation, Transformation, Writing, and Execution---together with the notation $L_i.T_j$ for identifying techniques and the tuple $C$ for describing complete loader configurations.
+The model is grounded in the shellcode/loader separation: the shellcode answers \emph{what} the malware does, the loader answers \emph{how} it reaches execution, and holding one fixed lets the other be studied systematically.
 
-Experimental validation on Windows Defender demonstrated the framework's ability to isolate individual stage contributions to detection outcomes, with the Transformation and Execution stages identified as primary detection differentiators.
-Detection rule verification confirmed that stage-specific rules provide visibility beyond commercial AV products and make coverage gaps immediately identifiable and actionable.
+Building on the model, we implemented a platform that compiles loader variants at preprocessor time and evaluates them on Windows virtual machines against Microsoft Defender.
+Because stage selection is resolved at compile time, each variant contains only the chosen code, and detection differences between variants can be attributed to the stage choices being varied rather than to runtime dispatch logic inside the loader.
 
-By unifying offensive technique analysis and defensive detection engineering within a single model, this work provides a foundation for systematic, reproducible security research that can be extended with additional techniques, security products, and real-world loader decomposition.
+On the defensive side, we proposed a stage-aware detection methodology that associates each pipeline stage with candidate telemetry sources and rule formats, formalized as a mapping from techniques to (telemetry source, observable indicator, detection rule) triples.
+Populating this mapping with concrete Sigma and YARA rules and running them against the platform's telemetry is the immediate next step, and the point at which the methodology moves from proposal to validated method.
+
+Our broader aim is to make shellcode loaders a more tractable object of study---explicit enough to be described, generated, and evaluated in controlled ways, and decomposed enough that defensive work can target specific internal stages rather than treat loaders as opaque binaries.

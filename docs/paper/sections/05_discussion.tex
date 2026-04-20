@@ -3,44 +3,65 @@
 % =============================================================================
 \section{Discussion}
 
-\subsection{Advantages of the Approach}
+\subsection{What the Framework Provides}
 
-\textbf{Standardized vocabulary.}
-The notation $L_i.T_j$ enables precise description: $(L_1.T_1, L_2.T_1, L_3.T_2, L_4.T_1, L_5.T_2)$ unambiguously specifies a loader using embedded storage, local allocation, AES encryption, local write, and callback execution.
+\textit{A standardized vocabulary.}
+The notation $L_i.T_j$ gives precise loader descriptions.
+For example, $(L_0.T_1, L_1.T_1, L_2.T_1, L_3.T_2, L_4.T_1, L_5.T_2)$ names a loader that uses anti-debug, \texttt{.rdata} storage, local RWX allocation, AES, \texttt{memcpy}, and \texttt{EnumDisplayMonitors} execution.
+Comparing two loaders, or resolving terminology disagreements, reduces to comparing tuples.
 
-\textbf{Bridging red and blue.}
-The same model serves both perspectives: red teams use it for structured generation and learning, while blue teams use it for detection mapping and gap analysis.
-This unified approach ensures that offensive technique knowledge directly translates into defensive capability.
+\textit{A vehicle for controlled experiments.}
+Because technique selection happens at preprocessor time, changing a single stage while keeping others constant produces a binary whose only code difference is inside that stage.
+Detection differences between two such binaries can then be attributed to the changed stage with fewer confounding variables than comparing hand-written loaders.
 
-\textbf{Complementarity with MITRE ATT\&CK.}
-ATT\&CK describes \textit{what} the attacker does at a strategic level; our model describes \textit{how} a specific loader works at an implementation level.
-The two are complementary: a loader classified under ``Process Injection'' (T1055) in ATT\&CK can be further decomposed into its six internal stages using our model.
+\textit{Complementarity with MITRE ATT\&CK.}
+ATT\&CK labels \emph{what} an attacker does at a strategic level; the pipeline model describes \emph{how} a specific loader works internally.
+A loader classified under T1055 Process Injection in ATT\&CK can be further decomposed into its six stages and summarized as a $C$-tuple, which makes the internal mechanics explicit without displacing the ATT\&CK label.
 
 \subsection{Limitations}
 
 \begin{enumerate}[leftmargin=*, itemsep=2pt]
-    \item \textbf{Limited technique library.}
-    The current implementation includes 1--3 techniques per stage.
-    Comprehensive evaluation requires additional techniques: remote allocation, APC execution, process hollowing, network-based storage, and advanced anti-analysis.
+    \item \textit{Small technique inventory.}
+    The platform currently provides 1--3 techniques per stage.
+    Several categories that would be important for a broader survey are not yet implemented, including remote allocation, APC queuing, process hollowing, and network-based storage.
 
-    \item \textbf{Single security product.}
-    Experiments were conducted only against Windows Defender.
-    Different products employ varying detection methods, and results may differ significantly.
+    \item \textit{Single security product.}
+    Evaluation is limited to Windows Defender.
+    Commercial EDR and other AV products use different telemetry and heuristics; results are not expected to transfer directly.
 
-    \item \textbf{Static experimental conditions.}
-    Defender definitions change frequently; longitudinal studies are needed to assess detection stability over time.
+    \item \textit{Single, fixed shellcode.}
+    We fix the shellcode to isolate loader effects on detection.
+    This is a deliberate methodological choice, but it means the study does not address payload-level factors such as shellcode size, staged versus reflective payloads, or obfuscation inside the shellcode itself.
+    These would require a separate axis of variation.
+
+    \item \textit{Detection methodology is proposed, not validated.}
+    The stage-aware detection methodology of Section~3.3 is a design.
+    No rules have been written and no rule-triggering data exist.
+    Its usefulness has to be established in subsequent work before claims can be made about coverage or gap detection.
+
+    \item \textit{Non-stationary targets.}
+    AV definitions and EDR heuristics change frequently, so a single-timepoint experiment captures a snapshot.
+    Longitudinal studies are needed to assess stability.
 \end{enumerate}
 
 \subsection{Future Work}
 
 \begin{itemize}[leftmargin=*, itemsep=2pt]
-    \item \textbf{Technique expansion}: Implement additional techniques across all stages (remote injection chain, APC/fiber/hollowing execution, RC4 encryption, HTTP storage) to increase the combinatorial space.
+    \item \textit{Populate the detection methodology.}
+    Write concrete Sigma and YARA rules for each technique in Table~\ref{tab:techniques}, populate the mapping $D$ from Eq.~(\ref{eq:detection_map}), and run the rules against telemetry already collected by the platform.
+    This is the most direct step to turn Section~3.3 from a proposal into a validated method.
 
-    \item \textbf{Multi-product evaluation}: Integrate commercial EDR solutions and open-source detection tools to build a cross-product detection matrix.
+    \item \textit{Technique expansion.}
+    Add remote injection (\texttt{VirtualAllocEx} $\rightarrow$ \texttt{WriteProcessMemory} $\rightarrow$ \texttt{CreateRemoteThread} or APC queuing), process hollowing, network-backed storage, and richer anti-analysis (timing checks, sandbox fingerprinting) so that the combinatorial space is large enough for meaningful comparison.
 
-    \item \textbf{Automated detection rule generation}: Develop a module that automatically generates Sigma~\cite{sigma} and YARA rules mapped to each technique via Eq.~(\ref{eq:detection_map}).
+    \item \textit{Multi-product evaluation.}
+    Integrate additional AV engines and at least one commercial EDR to build a cross-product detection matrix.
+    The per-stage view is expected to be most useful here: the same loader configuration may produce different detection patterns across products, and the pipeline model can attribute those differences to specific stages.
 
-    \item \textbf{Real-world loader decomposition}: Apply the model to decompose real-world malware loaders (Donut, ScareCrow, Cobalt Strike, Havoc) and threat intelligence samples from MalwareBazaar~\cite{malwarebazaar}, validating generality and building a structured knowledge base of technique tuples.
+    \item \textit{Real-world loader decomposition.}
+    Apply the pipeline model to loaders extracted from public samples---Donut~\cite{donut}, ScareCrow~\cite{scarecrow}, Havoc~\cite{havoc} implants, and MalwareBazaar~\cite{malwarebazaar} submissions---by mapping each real loader onto a $C$-tuple.
+    This tests the generality of the decomposition and builds a structured knowledge base of real-world configurations.
 
-    \item \textbf{Longitudinal studies}: Repeated experiments over time to measure how detection rates evolve with definition updates.
+    \item \textit{Longitudinal tracking.}
+    Re-run a fixed configuration set on a rolling schedule to track how detection outcomes shift as AV definitions and EDR models are updated.
 \end{itemize}
