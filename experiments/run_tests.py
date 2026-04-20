@@ -31,6 +31,7 @@ import csv
 import hashlib
 import logging
 import os
+import re
 import sys
 import time
 from datetime import datetime
@@ -162,25 +163,85 @@ PHASES = {
 # ---------------------------------------------------------------------------
 # Outcome classification
 # ---------------------------------------------------------------------------
+#
+# Taxonomy aligned with Defender telemetry (parsed from guest log body):
+#
+#   CB      — callback received; no Defender 1116/1117
+#             (clean bypass: loader reached shellcode AND Defender said nothing)
+#   LD      — callback received; Defender 1116 and/or 1117 present
+#             (late detection: shellcode phoned home before or despite
+#             remediation — common when 1117 Action = "No Action")
+#   EB      — no callback; Defender 1116/1117 present
+#             (Defender blocked or terminated the chain; "Execution Blocked")
+#   BLOCKED — no callback; no Defender events observed
+#             (listener timed out, no visible Defender action — investigate
+#             the guest log manually: possible crash, missing telemetry,
+#             or collector anchor miss)
+#   TB      — file blocked during transfer (Defender caught it on copy)
+#   ERROR   — infrastructure / build failure
+#   UNKNOWN — unparseable status (should not happen in practice)
+#
+# Prior single-argument classify(raw_status) mapped every "SUCCESS" to "S"
+# regardless of Defender events, producing false positives in the matrix
+# whenever the shellcode won a race against slow ML detection. The 5-way
+# taxonomy above uses the guest log body to separate clean bypasses (CB)
+# from late detections (LD) and provides an EB category that mirrors
+# Defender's own "detected + remediated" outcome.
 
-def classify(raw_status):
-    """Map core_engine status to paper outcome code.
 
-    S       : callback received
-    TB      : deleted during file transfer
-    BLOCKED : copied but execution blocked; SD vs RD requires manual log review
-    ERROR   : infrastructure failure
-    UNKNOWN : unparseable
+def parse_defender(log_body):
+    """Extract Defender 1116/1117 counts + first 1117 Action from log body.
+
+    The guest log format is produced by log_collectors/collect_all.ps1:
+        Time:     ...
+        EventID:  1116|1117|1118
+        Threat:   ...
+        Severity: ...
+        File:     ...
+        Action:   <Name> (id=<n>)
+    One block per event. Parser is tolerant of the collector's empty-Action
+    legacy output as well as the fixed "Name (id=N)" format.
+    """
+    body = log_body or ""
+    n1116 = len(re.findall(r"EventID:\s+1116\b", body))
+    n1117 = len(re.findall(r"EventID:\s+1117\b", body))
+    action = ""
+    # Grab the Action value from the first 1117 block if present.
+    # Use [ \t]* (not \s*) after "Action:" so we only consume same-line
+    # whitespace; \s* would greedily jump past the line terminator and
+    # capture the next line (the "---..." separator) when Action is empty.
+    m = re.search(r"EventID:\s+1117\b.*?\nAction:[ \t]*([^\n]*)", body, re.S)
+    if m:
+        action = m.group(1).strip()
+    return {"def_1116": n1116, "def_1117": n1117, "def_action": action}
+
+
+def classify(raw_status, def_info):
+    """Map (raw_status, Defender counts) -> paper outcome code.
+
+    See taxonomy block above the function for the meaning of each code.
     """
     s = (raw_status or "").upper()
-    if "SUCCESS" in s:
-        return "S"
+    if "BUILD_FAILED" in s or "EXCEPTION" in s:
+        return "ERROR"
     if "TRANSFER BLOCKED" in s:
         return "TB"
-    if "EXECUTION BLOCKED" in s:
+
+    callback = "SUCCESS" in s
+    detected = (def_info["def_1116"] + def_info["def_1117"]) > 0
+
+    if callback and not detected:
+        return "CB"
+    if callback and detected:
+        return "LD"
+    if not callback and detected:
+        return "EB"
+    # No callback and no Defender events — the listener timed out but the
+    # cause is not observable in the Defender log. Could be crash, guest
+    # collector failure, or telemetry anchor miss. Surface distinctly so
+    # these don't silently merge with EB.
+    if "EXECUTION BLOCKED" in s or "FAILED" in s:
         return "BLOCKED"
-    if "BUILD_FAILED" in s or "EXCEPTION" in s or "ERROR" in s or "FAILED" in s:
-        return "ERROR"
     return "UNKNOWN"
 
 
@@ -222,7 +283,9 @@ def build_plan(phase_keys):
 FIELDNAMES = [
     "id", "rep", "started_at",
     "t0", "t1", "t2", "t3", "t4", "t5", "api",
-    "payload_sha256", "raw_status", "code", "wall_time_s", "log_file",
+    "payload_sha256", "raw_status", "code",
+    "def_1116", "def_1117", "def_action",
+    "wall_time_s", "log_file",
 ]
 
 
@@ -321,7 +384,8 @@ def run_all(shellcode_path, vm_name, phase_keys, resume_arg=None):
                     log_body = f"Python exception: {exc}"
 
                 wall = round(time.time() - t0, 1)
-                code = classify(raw_status)
+                def_info = parse_defender(log_body)
+                code = classify(raw_status, def_info)
 
                 # Per-run run_*.log (build+status summary + log body tail)
                 run_log_path = os.path.join(batch_dir, run_log_name)
@@ -331,6 +395,9 @@ def run_all(shellcode_path, vm_name, phase_keys, resume_arg=None):
                     lf.write(f"config={cfg}\n")
                     lf.write(f"raw_status={raw_status}\n")
                     lf.write(f"code={code}\n")
+                    lf.write(f"def_1116={def_info['def_1116']} "
+                             f"def_1117={def_info['def_1117']} "
+                             f"def_action={def_info['def_action']!r}\n")
                     lf.write(f"wall_time_s={wall}\n")
                     lf.write(f"payload={payload_path}\n")
                     lf.write("---\n")
@@ -346,11 +413,15 @@ def run_all(shellcode_path, vm_name, phase_keys, resume_arg=None):
                     "payload_sha256": sha256_short(payload_path),
                     "raw_status": raw_status,
                     "code": code,
+                    "def_1116": def_info["def_1116"],
+                    "def_1117": def_info["def_1117"],
+                    "def_action": def_info["def_action"],
                     "wall_time_s": wall,
                     "log_file": run_log_name,
                 })
                 f_csv.flush()
-                print(f"       -> code={code}  ({wall}s)  raw={raw_status}")
+                print(f"       -> code={code}  1116={def_info['def_1116']} "
+                      f"1117={def_info['def_1117']}  ({wall}s)  raw={raw_status}")
     finally:
         f_csv.close()
 
@@ -423,6 +494,89 @@ def summarize_csv(csv_path):
 
 
 # ---------------------------------------------------------------------------
+# Reclassify: rebuild matrix.csv from existing run_*.log files
+# ---------------------------------------------------------------------------
+
+def _extract_log_body(run_log_path):
+    """Read a run_*.log produced by this runner and return the log_body.
+
+    File layout (see run_all()):
+        id=...
+        started=...
+        ...
+        ---
+        <log_body>
+    """
+    try:
+        with open(run_log_path, "r", encoding="utf-8", errors="replace") as f:
+            txt = f.read()
+    except OSError:
+        return ""
+    parts = txt.split("\n---\n", 1)
+    return parts[1] if len(parts) == 2 else txt
+
+
+def reclassify_batch(arg):
+    """Rebuild matrix.csv from per-run logs using the current classifier.
+
+    Reads run_<id>_<rep>.log for each row, re-parses Defender events, and
+    rewrites matrix.csv with the new schema (adds def_1116 / def_1117 /
+    def_action columns and the 5-way code). The original CSV is saved
+    alongside as matrix.csv.bak so the old labels are not lost.
+    """
+    batch_dir, csv_path = resolve_batch_dir(arg)
+    if not csv_path or not os.path.isfile(csv_path):
+        print(f"[!] Cannot resolve batch CSV from: {arg}")
+        return
+
+    with open(csv_path, "r", encoding="utf-8") as f:
+        old_rows = list(csv.DictReader(f))
+    if not old_rows:
+        print(f"[!] CSV has no data rows: {csv_path}")
+        return
+
+    # Backup
+    backup = csv_path + ".bak"
+    if not os.path.isfile(backup):
+        with open(csv_path, "r", encoding="utf-8") as src, \
+             open(backup, "w", encoding="utf-8", newline="") as dst:
+            dst.write(src.read())
+        print(f"[backup] saved original -> {backup}")
+
+    # Rewrite with new schema
+    with open(csv_path, "w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=FIELDNAMES)
+        writer.writeheader()
+
+        transitions = collections.Counter()
+        for old in old_rows:
+            cfg_id = old.get("id", "")
+            rep = old.get("rep", "")
+            run_log = os.path.join(batch_dir, f"run_{cfg_id}_{rep}.log")
+            body = _extract_log_body(run_log)
+            def_info = parse_defender(body)
+            new_code = classify(old.get("raw_status", ""), def_info)
+
+            old_code = old.get("code", "")
+            transitions[(old_code, new_code)] += 1
+
+            out = {k: old.get(k, "") for k in FIELDNAMES}
+            out["code"] = new_code
+            out["def_1116"] = def_info["def_1116"]
+            out["def_1117"] = def_info["def_1117"]
+            out["def_action"] = def_info["def_action"]
+            writer.writerow(out)
+
+    print(f"[reclassify] wrote {len(old_rows)} rows to {csv_path}")
+    print(f"[reclassify] label transitions (old -> new):")
+    for (a, b), n in sorted(transitions.items(), key=lambda kv: (-kv[1], kv[0])):
+        arrow = "    " if a == b else " -> "
+        print(f"   {a:>8}{arrow}{b:<8}  {n}")
+    print()
+    summarize_csv(csv_path)
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -442,6 +596,10 @@ def main():
     parser.add_argument("--summarize", metavar="DIR_OR_CSV",
                         help="Print summary of an existing batch folder or matrix.csv "
                              "and exit (no new runs).")
+    parser.add_argument("--reclassify", metavar="DIR_OR_CSV",
+                        help="Re-parse each run's log_body and rewrite matrix.csv with "
+                             "the current classifier (5-way: CB/LD/EB/BLOCKED/TB/ERROR). "
+                             "Saves a .bak of the original CSV. Exits without new runs.")
     parser.add_argument("-v", "--verbose", action="count", default=0,
                         help="Increase log verbosity: -v for INFO, -vv for DEBUG. "
                              "Default is WARNING only.")
@@ -456,6 +614,11 @@ def main():
             summarize_csv(csv_path)
         else:
             print(f"[!] Cannot resolve: {args.summarize}")
+        return
+
+    # --reclassify: rebuild matrix.csv from logs and exit
+    if args.reclassify:
+        reclassify_batch(args.reclassify)
         return
 
     phase_keys = [p.strip().upper() for p in args.phases.split(",") if p.strip()]
