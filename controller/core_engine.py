@@ -17,10 +17,26 @@ def build_payload(shellcode_path, build_options):
     return builder.build()
 
 
-def run_single_test(vm_name, payload_path, build_options):
+def run_single_test(vm_name, payload_path, build_options,
+                    log_dir=None, log_name=None):
+    """Revert VM, deploy payload, run, collect telemetry.
+
+    log_dir: directory for the guest telemetry .txt file.
+             Defaults to PROJECT_ROOT/test_logs (used by cli.py).
+             Batch runners (experiments/run_tests.py) pass a per-batch
+             subfolder so one folder contains everything for that batch.
+    log_name: filename for the guest telemetry dump within log_dir.
+              Defaults to "<vm_name>_<unix_ts>.txt".
+    """
     vm_conf = VMS_CONFIG.get(vm_name)
     if not vm_conf:
         return {"status": "ERROR", "log": "VM Config Not Found"}
+
+    if log_dir is None:
+        log_dir = os.path.join(PROJECT_ROOT, "test_logs")
+    os.makedirs(log_dir, exist_ok=True)
+    if log_name is None:
+        log_name = f"{vm_name}_{int(time.time())}.txt"
 
     vm = KVMManager(vm_conf['domain'], vm_conf['guest_ip'])
     c2 = C2Listener(LISTENER_IP, LISTENER_PORT)
@@ -89,10 +105,7 @@ def run_single_test(vm_name, payload_path, build_options):
             )
             time.sleep(5)  # collector writes output
 
-            host_log_path = os.path.join(
-                PROJECT_ROOT, "test_logs",
-                f"{vm_name}_{int(time.time())}.txt"
-            )
+            host_log_path = os.path.join(log_dir, log_name)
 
             if vm.copy_from_guest(GUEST_LOG_OUTPUT, host_log_path):
                 try:

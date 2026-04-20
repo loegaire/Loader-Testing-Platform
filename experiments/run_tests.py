@@ -11,16 +11,18 @@ Drives the core_engine (build + VM cycle) over a defined experiment plan:
                             L3 x L5 x API.
   Phase D — antidebug spot: 2 configs, L0 = antidebug baseline vs stealth.
 
-Per-run output:
-  - CSV row appended to test_logs/experiment_matrix_<timestamp>.csv
-  - Full raw log saved to   test_logs/run_<id>_<rep>_<timestamp>.log
+Per-batch output layout:
+  experiments/runs/<batch_timestamp>/
+      matrix.csv                  # summary of all runs (one row per run)
+      run_<id>_<rep>.log          # per-run builder/runner output
+      guest_<id>_<rep>.txt        # raw Defender+Sysmon telemetry from VM
 
 Usage:
   python experiments/run_tests.py -s shellcodes/payload.bin
   python experiments/run_tests.py -s ... --phases A       # sanity only
   python experiments/run_tests.py -s ... --phases B,C     # skip sanity+antidebug
   python experiments/run_tests.py -s ... --dry-run        # print plan only
-  python experiments/run_tests.py -s ... --resume CSV     # skip done rows
+  python experiments/run_tests.py -s ... --resume DIR_OR_CSV   # skip done rows
 """
 
 import argparse
@@ -38,7 +40,9 @@ REPO_ROOT = os.path.dirname(HERE)
 sys.path.insert(0, REPO_ROOT)
 
 from controller import core_engine  # noqa: E402 — import after sys.path tweak
-from controller.config import VMS_CONFIG, PROJECT_ROOT, LOGS_DIR  # noqa: E402
+from controller.config import VMS_CONFIG, PROJECT_ROOT  # noqa: E402
+
+BATCH_ROOT = os.path.join(HERE, "runs")  # experiments/runs/
 
 
 # ---------------------------------------------------------------------------
@@ -222,6 +226,24 @@ FIELDNAMES = [
 ]
 
 
+def resolve_batch_dir(resume_arg):
+    """Resolve --resume argument to (batch_dir, csv_path).
+
+    Accepts either:
+      - path to a batch directory (e.g., experiments/runs/20260420_170000)
+      - path to matrix.csv inside a batch directory
+      - path to a legacy experiment_matrix_*.csv in test_logs/ (older runs)
+    """
+    if not resume_arg:
+        return None, None
+    p = os.path.abspath(resume_arg)
+    if os.path.isdir(p):
+        return p, os.path.join(p, "matrix.csv")
+    if os.path.isfile(p):
+        return os.path.dirname(p), p
+    return None, None
+
+
 def load_done_keys(csv_path):
     done = set()
     if not csv_path or not os.path.isfile(csv_path):
@@ -232,23 +254,27 @@ def load_done_keys(csv_path):
     return done
 
 
-def run_all(shellcode_path, vm_name, phase_keys, resume_csv=None):
-    os.makedirs(LOGS_DIR, exist_ok=True)
-    done = load_done_keys(resume_csv)
-
-    if resume_csv and os.path.isfile(resume_csv):
+def run_all(shellcode_path, vm_name, phase_keys, resume_arg=None):
+    # Resolve batch directory: resume into existing, or create new.
+    resume_dir, resume_csv = resolve_batch_dir(resume_arg)
+    if resume_dir:
+        batch_dir = resume_dir
         out_csv = resume_csv
         mode = "a"
+        done = load_done_keys(resume_csv)
     else:
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        out_csv = os.path.join(LOGS_DIR, f"experiment_matrix_{stamp}.csv")
+        batch_dir = os.path.join(BATCH_ROOT, stamp)
+        os.makedirs(batch_dir, exist_ok=True)
+        out_csv = os.path.join(batch_dir, "matrix.csv")
         mode = "w"
+        done = set()
 
     runs = build_plan(phase_keys)
     total = sum(reps for _, _, reps in runs)
-    print(f"[plan] {total} runs across phases {','.join(phase_keys)}")
-    print(f"[csv]  {out_csv}")
-    print(f"[vm]   {vm_name}")
+    print(f"[plan]      {total} runs across phases {','.join(phase_keys)}")
+    print(f"[batch]     {batch_dir}")
+    print(f"[vm]        {vm_name}")
     print(f"[shellcode] {shellcode_path}  sha256={sha256_short(shellcode_path)}")
 
     f_csv = open(out_csv, mode, newline="", encoding="utf-8")
@@ -264,12 +290,15 @@ def run_all(shellcode_path, vm_name, phase_keys, resume_csv=None):
                 idx += 1
                 key = (cfg_id, str(rep))
                 if key in done:
-                    print(f"[{idx}/{total}] SKIP {cfg_id}/{rep} (in resume CSV)")
+                    print(f"[{idx}/{total}] SKIP {cfg_id}/{rep} (resumed)")
                     continue
 
                 started = datetime.now().strftime("%Y%m%d_%H%M%S")
                 print(f"\n[{idx}/{total}] {cfg_id}/{rep}  {short_name(cfg)}")
                 t0 = time.time()
+
+                run_log_name = f"run_{cfg_id}_{rep}.log"
+                guest_log_name = f"guest_{cfg_id}_{rep}.txt"
 
                 raw_status = "UNKNOWN"
                 log_body = ""
@@ -280,7 +309,11 @@ def run_all(shellcode_path, vm_name, phase_keys, resume_csv=None):
                         raw_status = "BUILD_FAILED"
                         log_body = "core_engine.build_payload returned None"
                     else:
-                        result = core_engine.run_single_test(vm_name, payload_path, cfg)
+                        result = core_engine.run_single_test(
+                            vm_name, payload_path, cfg,
+                            log_dir=batch_dir,
+                            log_name=guest_log_name,
+                        )
                         raw_status = result.get("status", "UNKNOWN")
                         log_body = result.get("log", "") or ""
                 except Exception as exc:
@@ -290,11 +323,11 @@ def run_all(shellcode_path, vm_name, phase_keys, resume_csv=None):
                 wall = round(time.time() - t0, 1)
                 code = classify(raw_status)
 
-                # Persist per-run log
-                log_name = f"run_{cfg_id}_{rep}_{started}.log"
-                log_path = os.path.join(LOGS_DIR, log_name)
-                with open(log_path, "w", encoding="utf-8", errors="replace") as lf:
+                # Per-run run_*.log (build+status summary + log body tail)
+                run_log_path = os.path.join(batch_dir, run_log_name)
+                with open(run_log_path, "w", encoding="utf-8", errors="replace") as lf:
                     lf.write(f"id={cfg_id} rep={rep}\n")
+                    lf.write(f"started={started}\n")
                     lf.write(f"config={cfg}\n")
                     lf.write(f"raw_status={raw_status}\n")
                     lf.write(f"code={code}\n")
@@ -314,16 +347,16 @@ def run_all(shellcode_path, vm_name, phase_keys, resume_csv=None):
                     "raw_status": raw_status,
                     "code": code,
                     "wall_time_s": wall,
-                    "log_file": log_name,
+                    "log_file": run_log_name,
                 })
                 f_csv.flush()
                 print(f"       -> code={code}  ({wall}s)  raw={raw_status}")
     finally:
         f_csv.close()
 
-    print(f"\n[done] matrix: {out_csv}")
+    print(f"\n[done] batch: {batch_dir}")
     summarize_csv(out_csv)
-    return out_csv
+    return batch_dir
 
 
 # ---------------------------------------------------------------------------
@@ -384,7 +417,8 @@ def summarize_csv(csv_path):
     m = int(total_time // 60)
     s = int(total_time % 60)
     print(f"\nTotal runs: {total_runs}  |  Total wall time: {m}m {s}s")
-    print(f"CSV: {csv_path}")
+    print(f"Batch:  {os.path.dirname(csv_path)}")
+    print(f"CSV:    {csv_path}")
     print("=" * 60)
 
 
@@ -401,13 +435,13 @@ def main():
                         help="VM name from controller/config.py (default: 'Windows Defender')")
     parser.add_argument("--phases", default="A,B,C,D,E,F",
                         help="Comma-separated phase keys (A/B/C/D/E/F). Default: all.")
-    parser.add_argument("--resume", metavar="CSV",
-                        help="Existing CSV to resume; rows already in CSV are skipped.")
+    parser.add_argument("--resume", metavar="DIR_OR_CSV",
+                        help="Existing batch folder (or its matrix.csv) to resume.")
     parser.add_argument("--dry-run", action="store_true",
                         help="Print the test plan and exit without running.")
-    parser.add_argument("--summarize", metavar="CSV",
-                        help="Print summary of an existing experiment CSV and exit "
-                             "(no new runs).")
+    parser.add_argument("--summarize", metavar="DIR_OR_CSV",
+                        help="Print summary of an existing batch folder or matrix.csv "
+                             "and exit (no new runs).")
     parser.add_argument("-v", "--verbose", action="count", default=0,
                         help="Increase log verbosity: -v for INFO, -vv for DEBUG. "
                              "Default is WARNING only.")
@@ -415,9 +449,13 @@ def main():
 
     configure_logging(args.verbose)
 
-    # --summarize: re-analyze existing CSV and exit
+    # --summarize: re-analyze existing batch folder or csv and exit
     if args.summarize:
-        summarize_csv(args.summarize)
+        _, csv_path = resolve_batch_dir(args.summarize)
+        if csv_path:
+            summarize_csv(csv_path)
+        else:
+            print(f"[!] Cannot resolve: {args.summarize}")
         return
 
     phase_keys = [p.strip().upper() for p in args.phases.split(",") if p.strip()]
@@ -451,7 +489,7 @@ def main():
         print(f"[!] Shellcode not found: {shellcode}")
         sys.exit(1)
 
-    run_all(shellcode, args.vm, phase_keys, resume_csv=args.resume)
+    run_all(shellcode, args.vm, phase_keys, resume_arg=args.resume)
 
 
 if __name__ == "__main__":
