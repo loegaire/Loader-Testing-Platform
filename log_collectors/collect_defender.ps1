@@ -1,49 +1,49 @@
 <#
 .SYNOPSIS
-    Collects recent security events from Windows Defender and Sysmon.
+    Collects recent security events from Windows Defender.
 .DESCRIPTION
     This script queries the Windows Event Log for malware detections by Windows Defender
-    and general system activity from Sysmon within the last 5 minutes.
+    within the last 5 minutes.
     It outputs the findings to a standardized text file on the user's Desktop.
-.OUTPUTS
-    C:\Users\<CurrentUser>\Desktop\detection_log.txt
 #>
 
-# --- Configuration ---
+# --- 1. Check Administrator Rights ---
+# Bắt buộc phải có quyền Admin mới đọc được Security Event Logs
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Warning "LỖI: Bạn phải mở PowerShell bằng quyền Administrator (Run as Administrator) để chạy script này!"
+    exit
+}
+
+# --- 2. Configuration ---
 $logFile = "$env:USERPROFILE\Desktop\detection_log.txt"
 
 $EndTime = Get-Date
 $StartTime = $EndTime.AddMinutes(-5)
 
-# --- Main Logic ---
-
+# Reset file log cũ nếu có
 if (Test-Path $logFile) {
     Remove-Item $logFile
 }
 
-# --- Section 1: Windows Defender Detections ---
-
+# --- 3. Windows Defender Detections ---
 "--- Windows Defender Detections ---`r`n" | Out-File -FilePath $logFile -Encoding utf8
 
-# ID 1116: Malware detection
-# ID 1117: Remediation action failed
-# ID 1118: Remediation action succeeded
-$defenderEvents = Get-WinEvent -FilterHashtable @{
-    LogName   = 'Microsoft-Windows-Windows Defender/Operational';
-    ID        = 1116, 1117, 1118;
-    StartTime = $StartTime;
-} -ErrorAction SilentlyContinue
+try {
+    # FIX LỖI: Sử dụng @() để định nghĩa mảng ID giúp tránh lỗi "parameter is incorrect"
+    $defenderEvents = Get-WinEvent -FilterHashtable @{
+        LogName   = 'Microsoft-Windows-Windows Defender/Operational';
+        ID        = @(1116, 1117, 1118);
+        StartTime = $StartTime;
+    } -ErrorAction Stop
 
-if ($null -eq $defenderEvents) {
-    "No new detections found in the last 5 minutes.`r`n" | Out-File -FilePath $logFile -Encoding utf8 -Append
-} else {
-    # Lặp qua từng sự kiện và trích xuất thông tin quan trọng
+    # Nếu có log, lặp qua từng sự kiện và trích xuất thông tin bằng XML
     foreach ($event in $defenderEvents) {
-        # Dữ liệu chi tiết nằm trong định dạng XML, chúng ta cần phân tích nó
         $eventXML = [xml]$event.ToXml()
-        $threatName = $eventXML.Event.EventData.Data | Where-Object { $_.Name -eq 'Threat Name' } | Select-Object -ExpandProperty '#text'
-        $filePath = $eventXML.Event.EventData.Data | Where-Object { $_.Name -eq 'Path' } | Select-Object -ExpandProperty '#text'
-        $action = $eventXML.Event.EventData.Data | Where-Object { $_.Name -eq 'Action' } | Select-Object -ExpandProperty '#text'
+        
+        # Bắt lỗi null trong trường hợp log không có đủ field
+        $threatName = $eventXML.Event.EventData.Data | Where-Object { $_.Name -eq 'Threat Name' } | Select-Object -ExpandProperty '#text' -ErrorAction SilentlyContinue
+        $filePath = $eventXML.Event.EventData.Data | Where-Object { $_.Name -eq 'Path' } | Select-Object -ExpandProperty '#text' -ErrorAction SilentlyContinue
+        $action = $eventXML.Event.EventData.Data | Where-Object { $_.Name -eq 'Action' } | Select-Object -ExpandProperty '#text' -ErrorAction SilentlyContinue
         
         "Time:     $($event.TimeCreated)" | Out-File -FilePath $logFile -Encoding utf8 -Append
         "Threat:   $threatName" | Out-File -FilePath $logFile -Encoding utf8 -Append
@@ -52,20 +52,10 @@ if ($null -eq $defenderEvents) {
         "---------------------------------`r`n" | Out-File -FilePath $logFile -Encoding utf8 -Append
     }
 }
-
-# --- Section 2: Sysmon Events ---
-
-"`r`n--- Sysmon Behavioral Events (Full Detail) ---`r`n" | Out-File -FilePath $logFile -Encoding utf8 -Append
-
-$sysmonEvents = Get-WinEvent -FilterHashtable @{
-    LogName   = 'Microsoft-Windows-Sysmon/Operational';
-    StartTime = $StartTime;
-} -ErrorAction SilentlyContinue
-
-if ($null -eq $sysmonEvents) {
-    "No new Sysmon events found.`r`n" | Out-File -FilePath $logFile -Encoding utf8 -Append
-} else {
-    ($sysmonEvents | Format-List | Out-String) | Out-File -FilePath $logFile -Encoding utf8 -Append
+catch {
+    # Nếu không có malware nào trong 5 phút qua, Get-WinEvent sẽ quăng lỗi thay vì trả về Null.
+    # Dùng try...catch để bắt lỗi này và ghi vào file log một cách mượt mà.
+    "No new Defender detections found in the last 5 minutes.`r`n" | Out-File -FilePath $logFile -Encoding utf8 -Append
 }
 
-Write-Host "Log collection complete. Output saved to $logFile"
+Write-Host "Log collection complete. Output saved to $logFile" -ForegroundColor Green

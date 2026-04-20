@@ -1,0 +1,80 @@
+% =============================================================================
+% SECTION 2: BACKGROUND AND RELATED WORK
+% =============================================================================
+\section{Background and Related Work}
+
+\subsection{Shellcode and Loader: a What/How Decomposition}
+
+Modern malware that delivers arbitrary code commonly separates two concerns, and we adopt this separation throughout the paper.
+The \textit{shellcode} answers \textbf{what} the malware does: it is a self-contained, position-independent code fragment whose functionality may be, for instance, establishing a reverse shell, encrypting files, self-replicating, or exfiltrating data.
+The \textit{loader} answers \textbf{how} that shellcode reaches execution: it is the code that delivers, transforms, places, and runs the shellcode inside a victim environment while attempting to bypass defenses.
+Under this lens, the shellcode is essentially interchangeable---the same reverse-TCP shellcode can be paired with many different loaders, and a single loader can deliver many different shellcodes.
+This interchangeability is why modern offensive toolchains and defensive analyses alike treat loader engineering and payload engineering as distinct problems.
+
+The present work focuses on the \textit{how}.
+Our platform and experiments are designed around the shellcode/loader separation and study the loader as the primary unit of variation, which in turn motivates the stage-based decomposition introduced in Section~3.
+
+\subsection{Open-Source Loader Frameworks}
+
+Several open-source frameworks generate shellcode loaders for red-team operations and constitute the closest practical neighbors of this work.
+Donut~\cite{donut} converts .NET assemblies or native PE files into position-independent shellcode packaged with a loader stub, and is widely reused as a building block.
+ScareCrow~\cite{scarecrow} focuses on EDR bypass through direct syscalls, DLL unhooking, and sideloaded entry points.
+Inceptor~\cite{inceptor} provides a template-driven build system for AV/EDR evasion, supporting multiple encoders, encryption primitives, and injection techniques.
+Havoc~\cite{havoc} is a post-exploitation command-and-control framework whose implant includes a configurable loader module with encoding and syscall options.
+
+These tools are valuable for operational use but are not organized for systematic research.
+They typically expose a flat option surface rather than a per-stage decomposition, bundle multiple concerns inside opaque templates, and are not paired with a controlled experimental harness that isolates the effect of each internal choice on detection outcomes.
+As a result, they provide neither a vocabulary nor a reproducible test fixture suitable for the kind of stage-level comparative study we aim to enable.
+
+\subsection{Individual Loader Techniques in the Literature}
+
+Research on individual loader techniques is extensive but fragmented.
+Hosseini~\cite{process_injection} surveys ten process injection techniques and discusses their detection surfaces.
+Chernenko~\cite{api_unhooking} analyzes user-mode hook bypass and direct invocation of system calls as red-team tradecraft.
+The \textit{Hell's Gate} technique~\cite{hellsgate} demonstrates how to dynamically resolve system service numbers from a loaded \texttt{ntdll} copy, enabling direct-syscall loaders that evade user-mode hooks.
+SysWhispers~\cite{syswhispers} and its successors generate syscall stubs for large subsets of the Windows NT API to support the same goal.
+
+These works each focus on one technique or technique family in isolation.
+They do not place their contribution inside a broader loader pipeline, do not provide a framework that relates several techniques across stages, and do not offer an automated way to generate and compare technique variants.
+
+\subsection{Malware Testing and Detection Platforms}
+
+Automated malware analysis platforms such as Cuckoo Sandbox~\cite{cuckoo} and ANY.RUN~\cite{anyrun} execute submitted binaries in instrumented environments and return behavioral reports.
+They are oriented toward analyzing pre-existing samples rather than \emph{generating} technique-level variants for controlled comparison, and they treat each sample as an opaque unit rather than as a composition of known stages.
+
+Consumer-facing evaluations by AV-TEST~\cite{avtest} and AV-Comparatives~\cite{avcomparatives} measure detection rates of security products across malware corpora.
+These evaluations emphasize aggregate detection scores and are not designed to attribute detection outcomes to specific internal techniques of a loader.
+
+MITRE ATT\&CK~\cite{mitre_attack} supplies a widely adopted vocabulary for adversary tactics and techniques (e.g., T1055 Process Injection, T1620 Reflective Code Loading).
+ATT\&CK operates at a strategic, cross-sample level and does not model the internal execution pipeline of a single loader binary; our pipeline model is intended to be complementary to ATT\&CK rather than a replacement.
+
+\subsection{Research Gap}
+
+Table~\ref{tab:gap} positions this work against representative systems in the three categories above.
+We retain only the axes that are meaningful for a loader-focused study: stage-level decomposition of loader internals, automated generation of technique variants, and a stage-aware detection methodology.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Positioning against representative systems. Only this work combines stage-level decomposition, modular variant generation, and a stage-aware detection methodology; the last item is \textit{proposed} here and scoped to future work for empirical validation.}
+    \label{tab:gap}
+    \small
+    \begin{tabular}{@{}p{2.8cm}ccc@{}}
+        \toprule
+        \textbf{System} & \rotatebox{70}{\textbf{Stage decomp.}} & \rotatebox{70}{\textbf{Variant gen.}} & \rotatebox{70}{\textbf{Stage-aware det.}} \\
+        \midrule
+        MITRE ATT\&CK~\cite{mitre_attack}         & Partial    & ---        & ---        \\
+        Cuckoo / ANY.RUN~\cite{cuckoo,anyrun}     & ---        & ---        & ---        \\
+        AV-TEST / AV-Comp.~\cite{avtest,avcomparatives} & ---  & ---        & ---        \\
+        Donut~\cite{donut}                        & ---        & \checkmark & ---        \\
+        ScareCrow~\cite{scarecrow}                & ---        & \checkmark & ---        \\
+        Inceptor~\cite{inceptor}                  & ---        & \checkmark & ---        \\
+        Havoc loader~\cite{havoc}                 & ---        & \checkmark & ---        \\
+        \textbf{This work}                        & \checkmark & \checkmark & Proposed   \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Existing loader frameworks generate functional loaders but do not expose an internal stage structure for research.
+Individual-technique studies explain specific mechanisms but are not framed within a unified pipeline.
+Testing platforms consume pre-built samples and return aggregate verdicts rather than technique-level comparisons.
+To our knowledge, no prior work combines a stage-based decomposition of shellcode loader internals with automated variant generation and a stage-aware detection methodology intended to make per-stage detection surfaces explicit.

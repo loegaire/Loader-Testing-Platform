@@ -38,6 +38,38 @@ inline PVOID MyVirtualAllocEx(
 #endif
 }
 
+inline BOOL MyVirtualProtect(
+    PVOID lpAddress,
+    SIZE_T dwSize,
+    ULONG flNewProtect,
+    PULONG lpflOldProtect
+) {
+#ifdef USE_DIRECT_SYSCALLS
+    PVOID baseAddress = lpAddress;
+    SIZE_T regionSize = dwSize;
+
+    NTSTATUS status = sysNtProtectVirtualMemory(
+        (HANDLE)-1,
+        &baseAddress,
+        &regionSize,
+        flNewProtect,
+        lpflOldProtect
+    );
+
+    return status == 0;
+
+#else
+
+    return VirtualProtect(
+        lpAddress,
+        dwSize,
+        flNewProtect,
+        (PDWORD)lpflOldProtect
+    );
+
+#endif
+}
+
 inline HANDLE MyCreateThreadEx(
     HANDLE hProcess,
     LPTHREAD_START_ROUTINE lpStartAddress,

@@ -21,3 +21,4 @@ __pycache__/
 /build/generated_loader.cpp
 build/generated_loader.cpp
 /tmp
+shellcodes/*.bin

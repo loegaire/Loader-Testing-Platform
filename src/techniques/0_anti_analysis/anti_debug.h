@@ -1,16 +1,18 @@
 #pragma once
 #include "../../core/utils.h"
+#include "../context.h"
 
-BOOL IsDebugged() {
-#ifdef EVASION_CHECKS_ENABLED
-    // Kiểm tra cờ BeingDebugged trong PEB
-    PPEB pPeb = GetPeb();
-    if (pPeb->BeingDebugged) {
-        #ifdef DEBUG_MODE
-            DEBUG_MSG("Anti-Analysis", "Debugger detected via PEB!");
-        #endif
-        return TRUE;
-    }
+inline BOOL Stage0_AntiAnalysis_Debug(TechniqueContext* ctx)
+{
+    (void)ctx;
+
+    PEB* pPeb = GetPeb();
+    if (pPeb && pPeb->BeingDebugged) {
+#ifdef DEBUG_MODE
+        DEBUG_MSG("Stage0", "Debugger detected via PEB!");
 #endif
-    return FALSE;
+        return FALSE;
+    }
+
+    return TRUE;
 }

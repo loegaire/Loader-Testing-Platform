@@ -1,0 +1,46 @@
+% =============================================================================
+% SECTION 5: DISCUSSION
+% =============================================================================
+\section{Discussion}
+
+\subsection{Advantages of the Approach}
+
+\textbf{Standardized vocabulary.}
+The notation $L_i.T_j$ enables precise description: $(L_1.T_1, L_2.T_1, L_3.T_2, L_4.T_1, L_5.T_2)$ unambiguously specifies a loader using embedded storage, local allocation, AES encryption, local write, and callback execution.
+
+\textbf{Bridging red and blue.}
+The same model serves both perspectives: red teams use it for structured generation and learning, while blue teams use it for detection mapping and gap analysis.
+This unified approach ensures that offensive technique knowledge directly translates into defensive capability.
+
+\textbf{Complementarity with MITRE ATT\&CK.}
+ATT\&CK describes \textit{what} the attacker does at a strategic level; our model describes \textit{how} a specific loader works at an implementation level.
+The two are complementary: a loader classified under ``Process Injection'' (T1055) in ATT\&CK can be further decomposed into its six internal stages using our model.
+
+\subsection{Limitations}
+
+\begin{enumerate}[leftmargin=*, itemsep=2pt]
+    \item \textbf{Limited technique library.}
+    The current implementation includes 1--3 techniques per stage.
+    Comprehensive evaluation requires additional techniques: remote allocation, APC execution, process hollowing, network-based storage, and advanced anti-analysis.
+
+    \item \textbf{Single security product.}
+    Experiments were conducted only against Windows Defender.
+    Different products employ varying detection methods, and results may differ significantly.
+
+    \item \textbf{Static experimental conditions.}
+    Defender definitions change frequently; longitudinal studies are needed to assess detection stability over time.
+\end{enumerate}
+
+\subsection{Future Work}
+
+\begin{itemize}[leftmargin=*, itemsep=2pt]
+    \item \textbf{Technique expansion}: Implement additional techniques across all stages (remote injection chain, APC/fiber/hollowing execution, RC4 encryption, HTTP storage) to increase the combinatorial space.
+
+    \item \textbf{Multi-product evaluation}: Integrate commercial EDR solutions and open-source detection tools to build a cross-product detection matrix.
+
+    \item \textbf{Automated detection rule generation}: Develop a module that automatically generates Sigma~\cite{sigma} and YARA rules mapped to each technique via Eq.~(\ref{eq:detection_map}).
+
+    \item \textbf{Real-world loader decomposition}: Apply the model to decompose real-world malware loaders (Donut, ScareCrow, Cobalt Strike, Havoc) and threat intelligence samples from MalwareBazaar~\cite{malwarebazaar}, validating generality and building a structured knowledge base of technique tuples.
+
+    \item \textbf{Longitudinal studies}: Repeated experiments over time to measure how detection rates evolve with definition updates.
+\end{itemize}

@@ -1,0 +1,50 @@
+% =============================================================================
+% SECTION 1: INTRODUCTION
+% =============================================================================
+\section{Introduction}
+
+% --- Two-component architecture ---
+Modern malware that delivers arbitrary code typically consists of two components: a \textit{payload}, the shellcode that performs the intended action such as a reverse shell, and a \textit{loader}, the program that prepares, places, and executes the payload in memory.
+The payload defines what the malware does; the loader defines how the payload reaches execution.
+
+% --- Why loaders matter ---
+Most evasion engineering concentrates in the loader.
+Antivirus (AV) and Endpoint Detection and Response (EDR) products observe loader behavior more than payload content: they scan embedded data at rest, monitor memory allocation, and flag suspicious thread creation and code injection~\cite{mitre_execution}.
+The payload itself is often generic and interchangeable.
+This paper focuses on \textit{shellcode loaders}---programs that load and execute position-independent code in memory on Windows---rather than DLL loaders, script-based loaders, or fileless techniques targeting other platforms.
+Consistent with this focus, we treat the shellcode payload as a controlled variable: all experiments use a single \texttt{msfvenom}-generated reverse-TCP shellcode as a fixed reference payload, so that observed detection differences can be attributed to loader choices rather than to payload content.
+
+% --- Problem statement ---
+Despite their importance, existing knowledge about loaders is fragmented.
+Offensive techniques such as process injection~\cite{process_injection}, API unhooking~\cite{api_unhooking}, and direct syscall invocation~\cite{hellsgate} are documented in scattered blog posts, repositories, and conference talks, with no shared framework that relates them within a loader's execution flow.
+On the defensive side, analysts often treat loaders as black boxes.
+When a loader evades detection, it is hard to tell which stage was responsible---encrypted storage, direct syscalls, or callback-based execution---and each requires a different detection strategy.
+
+% --- Brief gap motivation ---
+Existing approaches address parts of this problem.
+MITRE ATT\&CK~\cite{mitre_attack} catalogs adversary tactics and techniques but does not model the internal stages of a single loader binary.
+Sandbox platforms such as Cuckoo~\cite{cuckoo} and ANY.RUN~\cite{anyrun} run samples as opaque inputs and do not support technique-level comparison across controlled variants.
+Section~2 reviews related work in detail.
+
+% --- Contributions ---
+This paper makes three contributions:
+
+\begin{enumerate}[leftmargin=*, itemsep=2pt]
+    \item A six-stage pipeline model that decomposes a shellcode loader into sequential stages---Anti-Analysis, Storage, Allocation, Transformation, Writing, Execution---together with a notation $L_i.T_j$ for identifying techniques within each stage.
+
+    \item An automated build-and-test platform that implements the model through compile-time technique selection and evaluates generated loader variants in isolated Windows virtual machines against Windows Defender.
+
+    \item A stage-aware detection methodology that links each pipeline stage to candidate telemetry sources and rule formats, providing a structured framework for future detection-rule development; rule implementation and empirical validation are scoped as future work.
+\end{enumerate}
+
+% --- Key findings preview ---
+Preliminary experiments against Windows Defender indicate that the Transformation stage is the dominant static-detection differentiator, while Execution techniques and API methods influence behavioral detection outcomes.
+These observations support the value of the proposed stage-level decomposition as a lens for studying shellcode loaders.
+
+% --- Paper organization ---
+The rest of the paper is organized as follows.
+Section~2 formalizes the shellcode/loader decomposition and reviews related work.
+Section~3 presents the pipeline model and the platform.
+Section~4 reports experimental results.
+Section~5 discusses findings and limitations.
+Section~6 concludes.

