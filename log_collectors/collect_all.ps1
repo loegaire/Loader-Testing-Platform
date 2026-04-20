@@ -16,7 +16,9 @@
 #>
 
 param(
-    [int]$Minutes = 5
+    [int]$Minutes = 5,           # Fallback window if payload event not found
+    [int]$PayloadLookbackSec = 5 # Include events this many seconds BEFORE payload start
+                                  # (captures any pre-process telemetry that belongs to the same run)
 )
 
 # --- Configuration ---
@@ -24,7 +26,39 @@ $logFile = "$env:USERPROFILE\Desktop\detection_log.txt"
 $csvFile = "$env:USERPROFILE\Desktop\detection_log.csv"
 
 $EndTime = Get-Date
-$StartTime = $EndTime.AddMinutes(-$Minutes)
+
+# --- Time-window resolution ---
+# Prefer anchoring to the ProcessCreate event for payload.exe so that
+# the collected log contains only the current run's telemetry. If no
+# payload ProcessCreate exists yet (payload never reached execution),
+# fall back to a fixed lookback window.
+$payloadStart = $null
+try {
+    $procEvents = Get-WinEvent -FilterHashtable @{
+        LogName = 'Microsoft-Windows-Sysmon/Operational';
+        ID      = 1;
+    } -MaxEvents 200 -ErrorAction Stop
+
+    foreach ($e in $procEvents) {
+        $xml = [xml]$e.ToXml()
+        $img = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'Image' }).'#text'
+        if ($img -like '*\payload.exe') {
+            # Events come back newest-first; first match is the latest payload launch
+            $payloadStart = $e.TimeCreated
+            break
+        }
+    }
+} catch {
+    # No Sysmon events at all; leave $payloadStart null
+}
+
+if ($null -ne $payloadStart) {
+    $StartTime = $payloadStart.AddSeconds(-$PayloadLookbackSec)
+    $anchorNote = "anchored to payload.exe ProcessCreate at $payloadStart (-${PayloadLookbackSec}s lookback)"
+} else {
+    $StartTime = $EndTime.AddMinutes(-$Minutes)
+    $anchorNote = "payload.exe ProcessCreate not found; using $Minutes-minute fallback window"
+}
 
 # Clean previous logs
 if (Test-Path $logFile) { Remove-Item $logFile }
@@ -277,7 +311,8 @@ if ($tamperEvents) {
 # --- Summary ---
 Write-Log ""
 Write-Log "=== COLLECTION COMPLETE ==="
-Write-Log "Time range: $StartTime to $EndTime ($Minutes minutes)"
+Write-Log "Time range: $StartTime to $EndTime"
+Write-Log "Anchor:     $anchorNote"
 Write-Log "Text log:   $logFile"
 Write-Log "CSV log:    $csvFile"
 
