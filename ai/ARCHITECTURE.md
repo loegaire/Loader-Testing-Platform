@@ -87,12 +87,11 @@ Stage 1 populates `data/key/nonce` → Stage 2 allocates `allocated_mem` → Sta
 
 ### 3. API Abstraction Layer
 
-API calls are wrapped to support three modes:
+API calls are wrapped to support two modes:
 - **WinAPI** (default): Standard Windows API calls
-- **Indirect Syscall**: Resolve and call through ntdll
 - **Direct Syscall**: Custom assembly syscall stubs (NASM)
 
-Selected via `--api winapi|indirect|syscalls`.
+Selected via `--api winapi|syscalls`.
 
 ### 4. Build Pipeline
 

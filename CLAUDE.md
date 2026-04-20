@@ -23,7 +23,7 @@ python cli.py -s PATH \
               -t3 none|xor|aes \
               -t4 local|local_rx \
               -t5 local|monitors|fiber \
-              --api winapi|indirect|syscalls \
+              --api winapi|syscalls \
               -v VM1 VM2 --debug
 
 # Manual make (rarely needed — builder.py calls this)
@@ -74,9 +74,8 @@ Orchestrated by `controller/modules/builder.py`. The Makefile compiles C++ (MinG
 
 ### API Abstraction
 
-`src/api/api_wrappers.h` wraps NT API calls with three modes selected via `--api`:
+`src/api/api_wrappers.h` wraps NT API calls with two modes selected via `--api`:
 - `winapi` (default) — standard Windows API
-- `indirect` — **not yet implemented**; the `USE_INDIRECT_WINAPI` flag is defined but no wrapper uses it. `--api indirect` currently behaves like `--api winapi`.
 - `syscalls` — direct syscall via NASM stubs. Covers `NtAllocateVirtualMemory`, `NtProtectVirtualMemory`, `NtCreateThreadEx`, `NtWaitForSingleObject`.
 
 Wrapped functions: `MyVirtualAllocEx`, `MyVirtualProtect`, `MyCreateThreadEx`, `MyWaitForSingleObject`.
