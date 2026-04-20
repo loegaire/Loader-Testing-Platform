@@ -73,7 +73,7 @@ python3 cli.py -s <shellcode.bin> [stage flags] [options]
 | `-t3` | Transformation | `none`, `xor`, `aes` | `none` |
 | `-t4` | Writing | `local` | `local` |
 | `-t5` | Execution | `local`, `monitors` | `local` |
-| `--api` | API Layer | `winapi`, `indirect`, `syscalls` | `winapi` |
+| `--api` | API Layer | `winapi`, `syscalls` | `winapi` |
 
 ### Options
 
@@ -94,7 +94,7 @@ python3 cli.py -s shellcodes/payload.bin -t3 xor -t5 local --api syscalls -v "Wi
 
 # Full options
 python3 cli.py -s shellcodes/payload.bin -t0 antidebug -t1 rdata -t2 local \
-    -t3 aes -t4 local -t5 local --api indirect -v "Windows Defender" --debug
+    -t3 aes -t4 local -t5 local --api syscalls -v "Windows Defender" --debug
 ```
 
 ---
@@ -168,7 +168,7 @@ When run with `-v`, the engine performs:
 ├── src/
 │   ├── main.cpp                    # Loader entry point (template)
 │   ├── api/
-│   │   ├── api_wrappers.h          # NT API abstraction (winapi/indirect/syscalls)
+│   │   ├── api_wrappers.h          # NT API abstraction (winapi/syscalls)
 │   │   ├── syscall.asm             # Direct syscall stubs (NASM)
 │   │   └── syscall.h               # Syscall declarations
 │   ├── core/
