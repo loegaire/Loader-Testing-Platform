@@ -58,11 +58,15 @@ def run_single_test(vm_name, payload_path, build_options):
         payload_deployed = vm.copy_to_guest(payload_path, GUEST_PAYLOAD_PATH)
 
         # --- execute + listen ---
+        # Launch via Task Scheduler so the payload runs in the user's
+        # interactive session (matches manual console launch). Straight
+        # SSH-spawned processes live in the service session, which breaks
+        # cross-session OpenProcess calls made by remote-injection loaders.
         if payload_deployed:
             t = threading.Thread(target=c2.listen, args=(30,))
             t.start()
             time.sleep(2)  # let listener bind
-            vm.run_program(GUEST_PAYLOAD_PATH, no_wait=True)
+            vm.launch_interactive(GUEST_PAYLOAD_PATH)
             t.join()
 
         # --- classify outcome ---

@@ -1,3 +1,4 @@
+import base64
 import logging
 import os
 import subprocess
@@ -143,4 +144,41 @@ class KVMManager:
             remote_cmd = f'"{program_path}"'
             if args:
                 remote_cmd += f" {args}"
+        return self._ssh_cmd(remote_cmd) is not None
+
+    def launch_interactive(self, program_path):
+        """Launch a program in the user's interactive session via Task Scheduler.
+
+        Rationale: SSH-spawned processes live in the sshd service session,
+        which has limited cross-session access. A remote-injection loader
+        that calls OpenProcess on explorer.exe (user's interactive
+        session) will be denied, even though it works when the user
+        double-clicks the binary from the desktop. Task Scheduler with
+        -LogonType Interactive registers a one-shot task that Windows
+        runs in the logged-in user's session, matching console launch.
+
+        Privilege note: we deliberately use -RunLevel Limited so the
+        payload runs at Medium integrity (standard-user context), not
+        elevated. Our technique library (same-user process injection
+        into explorer / notepad) does not require SeDebugPrivilege or
+        admin, so running at Limited is both realistic (matches a
+        phishing-victim-standard-user scenario) and a cleaner test of
+        the loader techniques themselves. Elevated harness privileges
+        remain required separately for telemetry collection (Sysmon /
+        Defender event log reading), which is the harness's concern,
+        not the loader's.
+        """
+        task_name = f"LT{int(time.time())}"
+        ps_script = (
+            f'$act = New-ScheduledTaskAction -Execute "{program_path}"; '
+            f'$prin = New-ScheduledTaskPrincipal -UserId "{self.user}" '
+            f'-LogonType Interactive -RunLevel Limited; '
+            f'$task = New-ScheduledTask -Action $act -Principal $prin; '
+            f'Register-ScheduledTask -TaskName "{task_name}" -InputObject $task '
+            f'-Force | Out-Null; '
+            f'Start-ScheduledTask -TaskName "{task_name}"'
+        )
+        # Encode to avoid quoting issues through sshd/shell
+        ps_b64 = base64.b64encode(ps_script.encode("utf-16le")).decode()
+        remote_cmd = f"powershell -EncodedCommand {ps_b64}"
         return self._ssh_cmd(remote_cmd) is not None
