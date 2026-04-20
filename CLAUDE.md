@@ -19,7 +19,7 @@ python cli.py -s shellcodes/payload.bin -t3 xor -t5 local -v "VM_NAME"
 python cli.py -s PATH \
               -t0 none|antidebug \
               -t1 rdata \
-              -t2 local|local_rw|remote \
+              -t2 local|local_rw|remote|spawn \
               -t3 none|xor|aes \
               -t4 local|local_rx|remote \
               -t5 local|monitors|fiber|remote_thread \
@@ -93,7 +93,8 @@ Wrapped functions: `MyVirtualAllocEx`, `MyVirtualProtect`, `MyCreateThreadEx`, `
 | L1 | `rdata` | `T1_STORAGE_RDATA` | Payload in `.rdata` as C array |
 | L2 | `local` | `T2_ALLOC_LOCAL` | VirtualAlloc `PAGE_EXECUTE_READWRITE` (RWX) |
 | L2 | `local_rw` | `T2_ALLOC_LOCAL_RW` | VirtualAlloc `PAGE_READWRITE` (pair with L4 `local_rx`) |
-| L2 | `remote` | `T2_ALLOC_REMOTE` | Spawn `notepad.exe` suspended + `VirtualAllocEx` in target |
+| L2 | `remote` | `T2_ALLOC_REMOTE` | Find existing `explorer.exe` + `OpenProcess` + `VirtualAllocEx` |
+| L2 | `spawn` | `T2_ALLOC_SPAWN` | `CreateProcess(notepad.exe, CREATE_SUSPENDED)` + `VirtualAllocEx` |
 | L3 | `none` | `T3_TRANSFORM_NONE` | No decryption |
 | L3 | `xor` | `T3_TRANSFORM_XOR` | XOR-key |
 | L3 | `aes` | `T3_TRANSFORM_AES` | AES-128-CTR via `aes.c` |
@@ -107,7 +108,7 @@ Wrapped functions: `MyVirtualAllocEx`, `MyVirtualProtect`, `MyCreateThreadEx`, `
 
 **Paired techniques**:
 - `-t2 local_rw` only makes sense with `-t4 local_rx` (plain `local_rw + local` will crash because the buffer never gets the execute bit).
-- `-t2 remote` requires `-t4 remote` and `-t5 remote_thread` (the remote chain shares `target_process` through the context). Mixing remote alloc with local write/exec leaves `target_process` set but unused, and the local L4/L5 write to a non-existent local buffer.
+- `-t2 remote` and `-t2 spawn` both require `-t4 remote` and `-t5 remote_thread` (the cross-process chains share `target_process` through the context). The two L2 variants differ only in how `target_process` is obtained: `remote` opens an existing `explorer.exe`, `spawn` creates a fresh `notepad.exe` suspended. Mixing either remote-style L2 with local L4/L5 leaves `target_process` set but unused, and the local L4/L5 write to a non-existent local buffer.
 - No chain validator yet — users are expected to pair correctly.
 
 ## Adding a New Technique
