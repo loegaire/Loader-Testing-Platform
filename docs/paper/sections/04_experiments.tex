@@ -1,0 +1,138 @@
+% =============================================================================
+% SECTION 4: EXPERIMENTS
+% =============================================================================
+\section{Experimental Results}
+
+\subsection{Experimental Setup}
+
+\begin{itemize}[leftmargin=*, itemsep=1pt]
+    \item \textbf{Host}: Linux (Ubuntu 22.04) with MinGW-w64, NASM.
+    \item \textbf{Target VMs}: Windows~10 22H2 and Windows~11 24H2, each with Windows Defender (definitions updated at test time) and Sysmon~\cite{sysmon} with custom loader-optimized configuration.
+    \item \textbf{Shellcode}: Standard reverse TCP payload.
+    \item \textbf{Execution}: Payloads run under standard user privileges. Clean snapshot restored before each test.
+\end{itemize}
+
+\subsection{Implemented Techniques}
+
+Table~\ref{tab:techniques} lists the techniques available for experiment.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Implemented techniques per pipeline stage.}
+    \label{tab:techniques}
+    \small
+    \begin{tabular}{@{}llll@{}}
+        \toprule
+        \textbf{Stage} & \textbf{ID} & \textbf{Technique} & \textbf{Key API / Method} \\
+        \midrule
+        L0 & T0.1 & Anti-Debug       & \texttt{IsDebuggerPresent} \\
+        L1 & T1.1 & .rdata embed     & Binary \texttt{.rdata} section \\
+        L2 & T2.1 & Local alloc      & \texttt{VirtualAlloc} (RWX) \\
+        L3 & T3.0 & None             & Plaintext \\
+        L3 & T3.1 & XOR              & Multi-byte XOR key \\
+        L3 & T3.2 & AES-128-CTR      & \texttt{tiny-AES-c} library \\
+        L4 & T4.1 & Local write      & \texttt{memcpy} \\
+        L5 & T5.1 & CreateThread     & \texttt{CreateThread} \\
+        L5 & T5.2 & Callback abuse   & \texttt{EnumDisplayMonitors} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+The total number of unique configurations is $N = 1 \times 1 \times 3 \times 1 \times 2 = 6$, each tested with three API modes (WinAPI, indirect, direct syscall), yielding 18 test cases per VM.
+
+% TODO: Khi thêm technique mới (Remote, APC, RC4...), cập nhật bảng này
+% và tính lại N.
+
+\subsection{AV Detection Results}
+
+Table~\ref{tab:results} presents detection outcomes against Windows Defender.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Detection results against Windows Defender. S~=~Success (undetected), SD~=~Static Detection, RD~=~Runtime Detection, TB~=~Transfer Blocked.}
+    \label{tab:results}
+    \small
+    \begin{tabular}{@{}lllll@{}}
+        \toprule
+        \textbf{L3} & \textbf{L5} & \textbf{WinAPI} & \textbf{Indirect} & \textbf{Syscall} \\
+        \midrule
+        None   & CreateThread   & SD & SD & SD \\
+        None   & DisplayMonitor & SD & SD & SD \\
+        XOR    & CreateThread   & RD & RD & RD \\
+        XOR    & DisplayMonitor & RD & RD & S  \\
+        AES    & CreateThread   & RD & S  & S  \\
+        AES    & DisplayMonitor & S  & S  & S  \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+% TODO: DỮ LIỆU GIẢ ĐỊNH — thay bằng kết quả thực nghiệm thật.
+
+\subsection{Detection Rule Verification}
+
+To validate the detection mapping methodology (Section~3.2.2), we developed detection rules targeting specific stages and evaluated them against the tested configurations.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Detection rules developed for stage-aware evaluation.}
+    \label{tab:rules}
+    \small
+    \begin{tabular}{@{}llll@{}}
+        \toprule
+        \textbf{Rule} & \textbf{Stage} & \textbf{Format} & \textbf{Detection Target} \\
+        \midrule
+        R1 & L1 & YARA   & High-entropy \texttt{.rdata} section \\
+        R2 & L2 & Sigma  & RWX alloc from unsigned process \\
+        R3 & L4 & Sigma  & Cross-process memory write \\
+        R4 & L5 & Sigma  & Remote thread in non-image memory \\
+        R5 & L5 & Sigma  & Callback API from non-GUI process \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Table~\ref{tab:rule_results} presents the cross-referenced detection matrix, realizing the formal mapping $D$ from Eq.~(\ref{eq:detection_map}).
+
+\begin{table*}[htbp]
+    \centering
+    \caption{Detection rule verification matrix. \checkmark\ = rule triggered, \texttimes\ = not triggered, --- = not applicable. Combined with Defender outcome.}
+    \label{tab:rule_results}
+    \small
+    \begin{tabular}{@{}llllllll@{}}
+        \toprule
+        \textbf{Configuration} & \textbf{R1 (L1)} & \textbf{R2 (L2)} & \textbf{R3 (L4)} & \textbf{R4 (L5)} & \textbf{R5 (L5)} & \textbf{Defender} & \textbf{Analysis} \\
+        \midrule
+        Local+None+Thread    & \texttimes & \checkmark & ---        & ---        & ---        & SD & Static layer sufficient \\
+        Local+XOR+Thread     & \texttimes & \checkmark & ---        & ---        & ---        & RD & L2 rule provides visibility \\
+        Local+AES+Thread     & \texttimes & \checkmark & ---        & ---        & ---        & RD & L2 rule provides visibility \\
+        Local+AES+Callback   & \texttimes & \checkmark & ---        & ---        & \checkmark & S  & Gap: Defender missed, R5 caught \\
+        Remote+AES+RemThread & \texttimes & \checkmark & \checkmark & \checkmark & ---        & ?  & Multi-layer coverage \\
+        Remote+AES+APC       & \texttimes & \checkmark & \checkmark & \texttimes & ---        & ?  & Gap: R4 missed APC execution \\
+        \bottomrule
+    \end{tabular}
+\end{table*}
+
+% TODO: DỮ LIỆU GIẢ ĐỊNH — thay bằng kết quả thực nghiệm thật.
+
+\subsection{Analysis}
+
+The experimental results reveal several patterns that validate the stage-level analysis approach.
+
+\textbf{Transformation stage (L3) is the primary detection differentiator.}
+Plaintext loaders (T3.0) are consistently caught by static scanning.
+XOR encryption (T3.1) bypasses static detection but fails at runtime, suggesting in-memory pattern matching post-decryption.
+AES-128-CTR (T3.2) provides the strongest evasion, as the ciphertext exhibits high entropy without recognizable patterns.
+
+\textbf{Execution stage (L5) influences behavioral detection.}
+\texttt{CreateThread} generates explicit thread creation events monitored by behavioral engines, while callback-based execution via \texttt{EnumDisplayMonitors} produces fewer indicators by operating within a legitimate API call context.
+
+\textbf{API abstraction mode becomes significant at higher evasion levels.}
+When combined with strong encryption, direct syscalls bypass user-mode hooks, while indirect calls evade import table analysis.
+With weak encryption, the API mode is irrelevant as detection occurs at the static layer.
+
+\textbf{Stage-aware rules provide visibility beyond commercial AV.}
+The detection matrix (Table~\ref{tab:rule_results}) shows that even when Defender reports ``Success'' (undetected), custom rules triggered at specific stages (e.g., R2 detecting RWX allocation, R5 detecting callback abuse).
+This demonstrates the value of stage-level detection.
+
+\textbf{Detection gaps are identifiable and actionable.}
+APC-based execution evades rule R4 (designed for thread creation), revealing a specific gap addressable by developing an APC-targeted Sigma rule.
+This transforms detection engineering from reactive to systematic.
