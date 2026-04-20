@@ -19,10 +19,10 @@ python cli.py -s shellcodes/payload.bin -t3 xor -t5 local -v "VM_NAME"
 python cli.py -s PATH \
               -t0 none|antidebug \
               -t1 rdata \
-              -t2 local|local_rw \
+              -t2 local|local_rw|remote \
               -t3 none|xor|aes \
-              -t4 local|local_rx \
-              -t5 local|monitors|fiber \
+              -t4 local|local_rx|remote \
+              -t5 local|monitors|fiber|remote_thread \
               --api winapi|syscalls \
               -v VM1 VM2 --debug
 
@@ -93,16 +93,22 @@ Wrapped functions: `MyVirtualAllocEx`, `MyVirtualProtect`, `MyCreateThreadEx`, `
 | L1 | `rdata` | `T1_STORAGE_RDATA` | Payload in `.rdata` as C array |
 | L2 | `local` | `T2_ALLOC_LOCAL` | VirtualAlloc `PAGE_EXECUTE_READWRITE` (RWX) |
 | L2 | `local_rw` | `T2_ALLOC_LOCAL_RW` | VirtualAlloc `PAGE_READWRITE` (pair with L4 `local_rx`) |
+| L2 | `remote` | `T2_ALLOC_REMOTE` | Spawn `notepad.exe` suspended + `VirtualAllocEx` in target |
 | L3 | `none` | `T3_TRANSFORM_NONE` | No decryption |
 | L3 | `xor` | `T3_TRANSFORM_XOR` | XOR-key |
 | L3 | `aes` | `T3_TRANSFORM_AES` | AES-128-CTR via `aes.c` |
 | L4 | `local` | `T4_WRITE_LOCAL` | memcpy only (assumes RWX allocation) |
 | L4 | `local_rx` | `T4_WRITE_LOCAL_RX` | memcpy + `VirtualProtect` to `PAGE_EXECUTE_READ` |
+| L4 | `remote` | `T4_WRITE_REMOTE` | `WriteProcessMemory` into target process buffer |
 | L5 | `local` | `T5_EXEC_LOCAL` | `CreateThread` on shellcode entry |
 | L5 | `monitors` | `T5_EXEC_DISPLAY_MONITORS` | `EnumDisplayMonitors` callback trick |
 | L5 | `fiber` | `T5_EXEC_FIBER` | `ConvertThreadToFiber` + `CreateFiber` + `SwitchToFiber` |
+| L5 | `remote_thread` | `T5_EXEC_REMOTE_THREAD` | `CreateRemoteThreadEx` (or `NtCreateThreadEx` syscall) into target |
 
-**Paired techniques**: `-t2 local_rw` only makes sense with `-t4 local_rx` (plain `local_rw + local` will crash because the buffer never gets the execute bit). No chain validator yet — users are expected to pair correctly.
+**Paired techniques**:
+- `-t2 local_rw` only makes sense with `-t4 local_rx` (plain `local_rw + local` will crash because the buffer never gets the execute bit).
+- `-t2 remote` requires `-t4 remote` and `-t5 remote_thread` (the remote chain shares `target_process` through the context). Mixing remote alloc with local write/exec leaves `target_process` set but unused, and the local L4/L5 write to a non-existent local buffer.
+- No chain validator yet — users are expected to pair correctly.
 
 ## Adding a New Technique
 
