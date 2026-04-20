@@ -90,6 +90,12 @@ The contribution of the present work is the descriptive model of the loader clas
     \item \textit{Scope of the model.}
     The six-stage model is formulated for shellcode loaders targeting Windows.
     Extending it to Linux ELF loaders, macOS Mach-O loaders, or managed-runtime loaders requires revisiting stage definitions; we do not claim in this paper that the decomposition transfers unchanged to those environments.
+
+    \item \textit{Single-source telemetry has bounded resolution.}
+    Sysmon, the primary behavioral source in our setup, distinguishes loader configurations only when at least one stage crosses a process boundary.
+    Intra-process technique choices (for example local thread creation vs.\ callback vs.\ fiber at L5, or single-step RWX vs.\ two-step W$^{\wedge}$X at L2/L4) produce identical Sysmon traces because the underlying operations have no dedicated cross-process event.
+    Resolving such cases requires additional telemetry (ETW Kernel-Memory, AMSI, memory-scan callbacks) that is part of the proposed detection methodology but not yet exercised empirically.
+    The current technique library was therefore extended to include a remote-injection chain (T2.3, T4.3, T5.4) so that Sysmon attribution can be observed and reported alongside the local-only configurations.
 \end{enumerate}
 
 \subsection{Reproducibility}

@@ -237,6 +237,12 @@ The intent is that, once these candidates are turned into concrete rules, the ta
     \end{tabular}
 \end{table*}
 
+\textbf{Visibility caveat: process locality.}
+The mapping above is technique-source-dependent and process-boundary-dependent.
+For a loader whose L2, L4, and L5 operations all execute inside a single process, intra-stage technique choices---for example local thread creation versus callback-based execution versus fiber switching at L5---do not surface as distinct Sysmon events because the underlying operations either lack a dedicated event (\texttt{VirtualProtect}, \texttt{SwitchToFiber}) or do not cross a process boundary (\texttt{CreateThread} on the calling process).
+Once a stage crosses the process boundary, the dedicated cross-process events (Event~8 \texttt{CreateRemoteThread}, Event~10 \texttt{ProcessAccess} with cross-image source/target, Event~25 \texttt{ProcessTampering}) fire and Sysmon attribution becomes per-technique.
+Distinguishing intra-process technique choices therefore requires telemetry sources beyond Sysmon, such as ETW Kernel-Memory providers, AMSI, or memory-scan callbacks; the methodology accommodates this by treating telemetry source as a per-stage parameter of the mapping rather than fixing it to one provider.
+
 \subsubsection{Proposed Technique-to-Rule Function}
 
 We formalize the intended relationship between techniques and detection rules as a mapping

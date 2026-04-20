@@ -18,8 +18,8 @@
 \subsection{Implemented Techniques}
 
 Table~\ref{tab:techniques} lists the techniques currently implemented in the platform.
-Two pairs of techniques are interdependent: \texttt{T2.1}~(\texttt{local}, RWX in one step) pairs with \texttt{T4.1}~(plain \texttt{memcpy}), while \texttt{T2.2}~(\texttt{local\_rw}, RW only) must be paired with \texttt{T4.2}~(\texttt{memcpy} followed by a flip to RX).
-Other L2/L4 combinations leave the buffer in a non-executable state and will abort at L5.
+Three groups of techniques are interdependent: \texttt{T2.1}~(\texttt{local}, RWX in one step) pairs with \texttt{T4.1}~(plain \texttt{memcpy}); \texttt{T2.2}~(\texttt{local\_rw}, RW only) pairs with \texttt{T4.2}~(\texttt{memcpy} followed by a flip to RX); and \texttt{T2.3}~(\texttt{remote}) pairs with \texttt{T4.3}~(\texttt{remote}) and \texttt{T5.4}~(\texttt{remote\_thread}) because the remote chain shares the target-process handle through the context.
+Other L2/L4/L5 combinations leave the buffer in a non-executable state, address an absent local buffer, or never reach the target process, and will abort at the corresponding stage.
 
 \begin{table}[htbp]
     \centering
@@ -30,19 +30,22 @@ Other L2/L4 combinations leave the buffer in a non-executable state and will abo
         \toprule
         \textbf{Stage} & \textbf{ID} & \textbf{Technique} & \textbf{Key API / Method} \\
         \midrule
-        L0 & T0.0 & None              & (skip stage) \\
-        L0 & T0.1 & Anti-Debug        & PEB \texttt{BeingDebugged} check \\
-        L1 & T1.1 & .rdata embed      & Binary \texttt{.rdata} section \\
-        L2 & T2.1 & Local RWX         & \texttt{VirtualAlloc} (RWX) \\
-        L2 & T2.2 & Local RW          & \texttt{VirtualAlloc} (RW only) \\
-        L3 & T3.0 & None              & Plaintext \\
-        L3 & T3.1 & XOR               & Multi-byte XOR key \\
-        L3 & T3.2 & AES-128-CTR       & \texttt{tiny-AES-c} library \\
-        L4 & T4.1 & Local memcpy      & \texttt{memcpy} only \\
+        L0 & T0.0 & None                & (skip stage) \\
+        L0 & T0.1 & Anti-Debug          & PEB \texttt{BeingDebugged} check \\
+        L1 & T1.1 & .rdata embed        & Binary \texttt{.rdata} section \\
+        L2 & T2.1 & Local RWX           & \texttt{VirtualAlloc} (RWX) \\
+        L2 & T2.2 & Local RW            & \texttt{VirtualAlloc} (RW only) \\
+        L2 & T2.3 & Remote alloc        & \texttt{CreateProcess} suspended + \texttt{VirtualAllocEx} \\
+        L3 & T3.0 & None                & Plaintext \\
+        L3 & T3.1 & XOR                 & Multi-byte XOR key \\
+        L3 & T3.2 & AES-128-CTR         & \texttt{tiny-AES-c} library \\
+        L4 & T4.1 & Local memcpy        & \texttt{memcpy} only \\
         L4 & T4.2 & Local W$^{\wedge}$X & \texttt{memcpy} + \texttt{VirtualProtect} $\rightarrow$ RX \\
-        L5 & T5.1 & CreateThread      & \texttt{CreateThread} \\
-        L5 & T5.2 & Callback          & \texttt{EnumDisplayMonitors} \\
-        L5 & T5.3 & Fiber             & \texttt{CreateFiber} + \texttt{SwitchToFiber} \\
+        L4 & T4.3 & Remote write        & \texttt{WriteProcessMemory} into target \\
+        L5 & T5.1 & CreateThread        & \texttt{CreateThread} \\
+        L5 & T5.2 & Callback            & \texttt{EnumDisplayMonitors} \\
+        L5 & T5.3 & Fiber               & \texttt{CreateFiber} + \texttt{SwitchToFiber} \\
+        L5 & T5.4 & Remote thread       & \texttt{CreateRemoteThreadEx} into target \\
         \bottomrule
     \end{tabular}
 \end{table}
