@@ -5,47 +5,58 @@
   Install: sysmon.exe -accepteula -i sysmon_loader_config.xml
   Update:  sysmon.exe -c sysmon_loader_config.xml
 
-  Stage mapping:
+  Stage mapping (event signal expected per stage):
     L0 (Anti-Analysis) -> No direct Sysmon coverage (ETW/debugger level)
-    L1 (Storage)       -> Event 11 (FileCreate), Event 3 (NetworkConnect), Event 22 (DNS)
-    L2 (Allocation)    -> Event 10 (ProcessAccess with VM_OPERATION/VM_WRITE)
-    L4 (Writing)       -> Event 10 (ProcessAccess with PROCESS_VM_WRITE)
-    L5 (Execution)     -> Event 1 (ProcessCreate), Event 8 (CreateRemoteThread), Event 25 (ProcessTampering)
+    L1 (Storage)       -> Event 11 (FileCreate), Event 3 (NetworkConnect),
+                          Event 22 (DnsQuery)
+    L2 (Allocation)    -> Event 10 (ProcessAccess) when remote (T2.3);
+                          no direct event for local VirtualAlloc
+    L4 (Writing)       -> Event 10 (ProcessAccess) when remote (T4.3);
+                          no direct event for local memcpy / VirtualProtect
+    L5 (Execution)     -> Event 1 (ProcessCreate) for child spawn;
+                          Event 8 (CreateRemoteThread) when remote (T5.4);
+                          Event 25 (ProcessTampering) for hollowing
+
+  Remote-chain (T2.3 + T4.3 + T5.4) signal preview:
+    - Event 1:  ProcessCreate parent=payload.exe child=notepad.exe (suspended)
+    - Event 10: ProcessAccess source=payload.exe target=notepad.exe
+                (covers VirtualAllocEx + WriteProcessMemory access patterns)
+    - Event 8:  CreateRemoteThread source=payload.exe target=notepad.exe,
+                StartAddress = remote-allocated buffer
 -->
-<Sysmon schemaversion="4.90">
+<Sysmon schemaversion="4.91">
   <HashAlgorithms>SHA256</HashAlgorithms>
 
   <EventFiltering>
 
     <!-- ================================================================== -->
-    <!-- Event ID 1: Process Creation                                       -->
-    <!-- Stage: L5 (Execution) - detect spawned/hollowed processes          -->
+    <!-- Event 1: ProcessCreate                                             -->
+    <!-- Stage: L5 (Execution) — captures shellcode-spawned children and   -->
+    <!--        suspended targets created by the remote chain.             -->
     <!-- ================================================================== -->
     <RuleGroup name="ProcessCreate" groupRelation="or">
       <ProcessCreate onmatch="include">
-        <!-- Suspended process creation (common for hollowing/injection) -->
+        <ParentImage condition="end with">payload.exe</ParentImage>
         <ParentImage condition="end with">cmd.exe</ParentImage>
         <ParentImage condition="end with">powershell.exe</ParentImage>
-        <ParentImage condition="end with">payload.exe</ParentImage>
-        <!-- Common injection targets -->
-        <Image condition="end with">svchost.exe</Image>
-        <Image condition="end with">rundll32.exe</Image>
-        <Image condition="end with">notepad.exe</Image>
-        <Image condition="end with">explorer.exe</Image>
-        <!-- Desktop path (where payloads are deployed) -->
-        <Image condition="contains">Desktop</Image>
+        <!-- Catch shellcode-spawned children when injected into an existing
+             host process (explorer.exe is the T2.3 target; notepad/rundll32
+             are common alternatives that may be added later). -->
+        <ParentImage condition="end with">explorer.exe</ParentImage>
+        <ParentImage condition="end with">notepad.exe</ParentImage>
+        <ParentImage condition="end with">rundll32.exe</ParentImage>
+        <Image condition="contains">\Desktop\</Image>
       </ProcessCreate>
     </RuleGroup>
 
     <!-- ================================================================== -->
-    <!-- Event ID 3: Network Connection                                     -->
-    <!-- Stage: L1 (Storage) - detect payload download from remote server   -->
+    <!-- Event 3: NetworkConnect                                            -->
+    <!-- Stage: L1 (Storage, future) and shellcode C2 callback             -->
     <!-- ================================================================== -->
     <RuleGroup name="NetworkConnect" groupRelation="or">
       <NetworkConnect onmatch="include">
-        <!-- Connections from payload or unknown binaries on Desktop -->
-        <Image condition="contains">Desktop</Image>
-        <!-- C2 callback detection -->
+        <Image condition="contains">\Desktop\</Image>
+        <!-- C2 callback ports (shellcode spawned from payload or target) -->
         <DestinationPort condition="is">4444</DestinationPort>
         <DestinationPort condition="is">443</DestinationPort>
         <DestinationPort condition="is">80</DestinationPort>
@@ -55,32 +66,29 @@
     </RuleGroup>
 
     <!-- ================================================================== -->
-    <!-- Event ID 7: Image Loaded (DLL)                                     -->
-    <!-- Stage: L2 (Allocation) - detect module stomping / DLL hollowing    -->
-    <!-- Scope: loads performed by the payload process only.                -->
-    <!-- Note: Signed=false filter was removed; it matched too many         -->
-    <!--       legitimate unsigned DLLs and drowned the payload signal.     -->
+    <!-- Event 7: ImageLoad                                                 -->
+    <!-- Stage: L2 (future module-stomping techniques). Limited to payload  -->
+    <!-- to avoid drowning in legitimate DLL loads.                         -->
     <!-- ================================================================== -->
     <RuleGroup name="ImageLoad" groupRelation="or">
       <ImageLoad onmatch="include">
-        <Image condition="contains">Desktop</Image>
+        <Image condition="contains">\Desktop\</Image>
       </ImageLoad>
     </RuleGroup>
 
     <!-- ================================================================== -->
-    <!-- Event ID 8: CreateRemoteThread                                     -->
-    <!-- Stage: L5 (Execution) - CRITICAL for remote thread injection       -->
+    <!-- Event 8: CreateRemoteThread                                        -->
+    <!-- Stage: L5 (Execution) — fires for the remote chain (T5.4).        -->
+    <!-- Excludes are boot-time / system processes that always do this.    -->
     <!-- ================================================================== -->
     <RuleGroup name="CreateRemoteThread" groupRelation="or">
       <CreateRemoteThread onmatch="exclude">
-        <!-- Exclude known legitimate remote thread creators -->
         <SourceImage condition="end with">csrss.exe</SourceImage>
         <SourceImage condition="end with">lsass.exe</SourceImage>
         <SourceImage condition="end with">services.exe</SourceImage>
         <SourceImage condition="end with">svchost.exe</SourceImage>
         <SourceImage condition="end with">MsMpEng.exe</SourceImage>
         <SourceImage condition="end with">vmtoolsd.exe</SourceImage>
-        <!-- Boot-time system activity that shows up in every snapshot revert -->
         <SourceImage condition="end with">winlogon.exe</SourceImage>
         <SourceImage condition="end with">wininit.exe</SourceImage>
         <SourceImage condition="end with">smss.exe</SourceImage>
@@ -89,89 +97,79 @@
     </RuleGroup>
 
     <!-- ================================================================== -->
-    <!-- Event ID 10: Process Access                                        -->
-    <!-- Stage: L2 (Allocation) + L4 (Writing) - cross-process operations   -->
-    <!-- Scope: accesses originating from the payload process only.         -->
-    <!-- Note: the previous GrantedAccess-based filters (0x1F0FFF etc.)     -->
-    <!--       were removed. Those masks are granted in huge volumes        -->
-    <!--       between system processes (csrss, services, svchost, sshd,   -->
-    <!--       MsMpEng) during normal operation and drowned the few         -->
-    <!--       events originating from the payload. Keeping only the        -->
-    <!--       SourceImage filter gives clean per-stage telemetry for       -->
-    <!--       loader research at the cost of not seeing remote callers     -->
-    <!--       targeting the payload -- which is out of scope here.          -->
+    <!-- Event 10: ProcessAccess                                            -->
+    <!-- Stage: L2 + L4 (Allocation + Writing) — fires for the remote      -->
+    <!-- chain when payload accesses the target process for VirtualAllocEx -->
+    <!-- and WriteProcessMemory.                                            -->
     <!-- ================================================================== -->
     <RuleGroup name="ProcessAccess" groupRelation="or">
       <ProcessAccess onmatch="include">
-        <SourceImage condition="contains">Desktop</SourceImage>
+        <SourceImage condition="contains">\Desktop\</SourceImage>
       </ProcessAccess>
     </RuleGroup>
 
     <!-- ================================================================== -->
-    <!-- Event ID 11: File Created                                          -->
-    <!-- Stage: L1 (Storage) - payload drop, file-based storage             -->
-    <!-- Scope: Desktop drops; exclude files our own harness produces.      -->
-    <!-- Note: the previous broad "\Temp\" filter was removed because it    -->
-    <!--       matched PowerShell's PSScriptPolicyTest temp files, WER      -->
-    <!--       temp files, and DiagTrack temp files on every run. Add      -->
-    <!--       it back when a disk-based L1 technique is introduced.       -->
+    <!-- Event 11: FileCreate — exclusions                                  -->
+    <!-- Drop files our own test harness writes to Desktop on every run.    -->
     <!-- ================================================================== -->
-    <RuleGroup name="FileCreate" groupRelation="or">
+    <RuleGroup name="FileCreate-Exclude" groupRelation="or">
       <FileCreate onmatch="exclude">
-        <!-- Our test harness writes these to Desktop on every run -->
         <TargetFilename condition="end with">detection_log.txt</TargetFilename>
         <TargetFilename condition="end with">detection_log.csv</TargetFilename>
         <TargetFilename condition="end with">sysmon.xml</TargetFilename>
         <TargetFilename condition="end with">collect_logs.ps1</TargetFilename>
       </FileCreate>
+    </RuleGroup>
+
+    <!-- ================================================================== -->
+    <!-- Event 11: FileCreate — inclusions                                  -->
+    <!-- Stage: L1 (Storage). Capture writes under Desktop so payload       -->
+    <!-- deployment and any future disk-based L1 technique are visible.     -->
+    <!-- ================================================================== -->
+    <RuleGroup name="FileCreate-Include" groupRelation="or">
       <FileCreate onmatch="include">
         <TargetFilename condition="contains">\Desktop\</TargetFilename>
       </FileCreate>
     </RuleGroup>
 
     <!-- ================================================================== -->
-    <!-- Event ID 13: Registry Value Set                                    -->
-    <!-- Stage: L1 (Storage) - registry-based payload storage               -->
+    <!-- Event 13: RegistryEvent                                            -->
+    <!-- Stage: L1 (future registry-based storage)                          -->
     <!-- ================================================================== -->
     <RuleGroup name="RegistryEvent" groupRelation="or">
       <RegistryEvent onmatch="include">
-        <!-- Large registry values (possible shellcode storage) -->
-        <Image condition="contains">Desktop</Image>
+        <Image condition="contains">\Desktop\</Image>
       </RegistryEvent>
     </RuleGroup>
 
     <!-- ================================================================== -->
-    <!-- Event ID 22: DNS Query                                             -->
-    <!-- Stage: L1 (Storage) - DNS-based payload download                   -->
+    <!-- Event 22: DnsQuery                                                 -->
+    <!-- Stage: L1 (future DNS-based payload download)                      -->
     <!-- ================================================================== -->
     <RuleGroup name="DnsQuery" groupRelation="or">
       <DnsQuery onmatch="include">
-        <!-- DNS queries from payload process -->
-        <Image condition="contains">Desktop</Image>
+        <Image condition="contains">\Desktop\</Image>
       </DnsQuery>
     </RuleGroup>
 
     <!-- ================================================================== -->
-    <!-- Event ID 25: Process Tampering                                     -->
-    <!-- Stage: L5 (Execution) - process hollowing / herpaderping           -->
-    <!-- Scope: tampering performed by the payload process only.            -->
-    <!-- Note: the catch-all "Type contains Image is replaced" clause was   -->
-    <!--       removed because it matched every smss.exe / system process   -->
-    <!--       boot-time image swap as legitimate Windows behavior.         -->
+    <!-- Event 25: ProcessTampering                                         -->
+    <!-- Stage: L5 (future hollowing/herpaderping). Limited to payload     -->
+    <!-- to filter out boot-time legitimate image swaps.                   -->
     <!-- ================================================================== -->
     <RuleGroup name="ProcessTampering" groupRelation="or">
       <ProcessTampering onmatch="include">
-        <Image condition="contains">Desktop</Image>
+        <Image condition="contains">\Desktop\</Image>
       </ProcessTampering>
     </RuleGroup>
 
     <!-- ================================================================== -->
-    <!-- Event ID 26: File Delete Detected                                  -->
-    <!-- Detect AV quarantine / file deletion                               -->
+    <!-- Event 26: FileDeleteDetected                                       -->
+    <!-- Captures AV quarantine deletes targeting payload on Desktop.      -->
     <!-- ================================================================== -->
     <RuleGroup name="FileDeleteDetected" groupRelation="or">
       <FileDeleteDetected onmatch="include">
-        <TargetFilename condition="contains">Desktop</TargetFilename>
+        <TargetFilename condition="contains">\Desktop\</TargetFilename>
       </FileDeleteDetected>
     </RuleGroup>
 
