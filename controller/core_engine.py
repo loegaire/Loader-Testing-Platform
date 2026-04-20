@@ -35,11 +35,20 @@ def run_single_test(vm_name, payload_path, build_options):
 
     # ĐƯA VÀO TRY-FINALLY ĐỂ ĐẢM BẢO LUÔN CLEANUP VM DÙ CÓ LỖI GÌ XẢY RA
     try:
-        # 3a. Apply latest Sysmon config from host (service already running in snapshot)
+        # 3a. Apply latest Sysmon config from host. We clear the Sysmon
+        # event log first, then apply the config, then verify rules loaded.
+        # Clearing the log ensures the collect step only sees events from
+        # THIS run, not from boot-time noise retained in the snapshot.
         if os.path.isfile(SYSMON_CONFIG_HOST):
             if vm.copy_to_guest(SYSMON_CONFIG_HOST, GUEST_SYSMON_CONFIG):
+                # Wipe residual boot-time Sysmon events from the snapshot
+                vm.run_program(
+                    "powershell.exe",
+                    "-Command \"wevtutil cl Microsoft-Windows-Sysmon/Operational\""
+                )
+                # Apply new rules
                 vm.run_program("sysmon.exe", f"-c {GUEST_SYSMON_CONFIG}")
-                time.sleep(1)  # brief settle before payload events start
+                time.sleep(2)  # settle before payload events
             else:
                 logging.warning("Sysmon config SCP failed; guest keeps prior ruleset")
         else:

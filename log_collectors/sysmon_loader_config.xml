@@ -31,21 +31,33 @@
 
     <!-- ================================================================== -->
     <!-- Event 1: ProcessCreate                                             -->
-    <!-- Stage: L5 (Execution) — captures shellcode-spawned children and   -->
-    <!--        suspended targets created by the remote chain.             -->
+    <!-- Stage: L5 (Execution) — loader invocation only.                   -->
+    <!--                                                                    -->
+    <!-- Scope decision: the loader's responsibility ends when the         -->
+    <!-- shellcode is executing. What the shellcode does next (spawning a  -->
+    <!-- cmd.exe reverse shell, for example) is shellcode/payload          -->
+    <!-- behavior, not loader behavior. We therefore exclude shellcode-    -->
+    <!-- spawned children (cmd.exe, conhost.exe) via the exclude rule.     -->
+    <!--                                                                    -->
+    <!-- Include rules: only the loader binary being invoked, or the       -->
+    <!-- spawn-suspended target (T2.4: payload -> notepad.exe).            -->
     <!-- ================================================================== -->
-    <RuleGroup name="ProcessCreate" groupRelation="or">
+    <RuleGroup name="ProcessCreate-Exclude" groupRelation="or">
+      <ProcessCreate onmatch="exclude">
+        <!-- Shellcode-spawned shell and its console host (payload behavior) -->
+        <ParentImage condition="contains">\Desktop\</ParentImage>
+        <Image condition="end with">cmd.exe</Image>
+        <Image condition="end with">conhost.exe</Image>
+      </ProcessCreate>
+    </RuleGroup>
+
+    <RuleGroup name="ProcessCreate-Include" groupRelation="or">
       <ProcessCreate onmatch="include">
-        <ParentImage condition="end with">payload.exe</ParentImage>
-        <ParentImage condition="end with">cmd.exe</ParentImage>
-        <ParentImage condition="end with">powershell.exe</ParentImage>
-        <!-- Catch shellcode-spawned children when injected into an existing
-             host process (explorer.exe is the T2.3 target; notepad/rundll32
-             are common alternatives that may be added later). -->
-        <ParentImage condition="end with">explorer.exe</ParentImage>
-        <ParentImage condition="end with">notepad.exe</ParentImage>
-        <ParentImage condition="end with">rundll32.exe</ParentImage>
+        <!-- Loader invocation: payload.exe being launched -->
         <Image condition="contains">\Desktop\</Image>
+        <!-- Spawn-suspended target when using T2.4 -->
+        <Image condition="end with">notepad.exe</Image>
+        <Image condition="end with">rundll32.exe</Image>
       </ProcessCreate>
     </RuleGroup>
 
@@ -53,15 +65,21 @@
     <!-- Event 3: NetworkConnect                                            -->
     <!-- Stage: L1 (Storage, future) and shellcode C2 callback             -->
     <!-- ================================================================== -->
+    <!-- ================================================================== -->
+    <!-- Event 3: NetworkConnect                                            -->
+    <!-- Stage: L1 (future network-backed storage technique).              -->
+    <!--                                                                    -->
+    <!-- Note: the C2 callback that the msfvenom reverse-TCP shellcode     -->
+    <!-- makes after execution is SHELLCODE behavior, not loader           -->
+    <!-- behavior, and is out of scope. We therefore only log connections  -->
+    <!-- originating from the payload binary itself (not from shellcode-   -->
+    <!-- spawned children) and ignore the destination port entirely. When  -->
+    <!-- a future L1 technique pulls the payload from a URL, the same      -->
+    <!-- rule will capture it.                                              -->
+    <!-- ================================================================== -->
     <RuleGroup name="NetworkConnect" groupRelation="or">
       <NetworkConnect onmatch="include">
         <Image condition="contains">\Desktop\</Image>
-        <!-- C2 callback ports (shellcode spawned from payload or target) -->
-        <DestinationPort condition="is">4444</DestinationPort>
-        <DestinationPort condition="is">443</DestinationPort>
-        <DestinationPort condition="is">80</DestinationPort>
-        <DestinationPort condition="is">8080</DestinationPort>
-        <DestinationPort condition="is">8443</DestinationPort>
       </NetworkConnect>
     </RuleGroup>
 
@@ -102,7 +120,17 @@
     <!-- chain when payload accesses the target process for VirtualAllocEx -->
     <!-- and WriteProcessMemory.                                            -->
     <!-- ================================================================== -->
-    <RuleGroup name="ProcessAccess" groupRelation="or">
+    <RuleGroup name="ProcessAccess-Exclude" groupRelation="or">
+      <ProcessAccess onmatch="exclude">
+        <!-- Shellcode spawning a cmd reverse-shell is payload behavior,
+             not loader behavior — exclude it so the log captures only
+             the loader's allocation/write/execute accesses. -->
+        <TargetImage condition="end with">cmd.exe</TargetImage>
+        <TargetImage condition="end with">conhost.exe</TargetImage>
+      </ProcessAccess>
+    </RuleGroup>
+
+    <RuleGroup name="ProcessAccess-Include" groupRelation="or">
       <ProcessAccess onmatch="include">
         <SourceImage condition="contains">\Desktop\</SourceImage>
       </ProcessAccess>
