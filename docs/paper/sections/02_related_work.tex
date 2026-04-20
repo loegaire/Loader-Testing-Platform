@@ -16,15 +16,16 @@ Our platform and experiments are designed around the shellcode/loader separation
 
 \subsection{Open-Source Loader Frameworks}
 
-Several open-source frameworks generate shellcode loaders for red-team operations and constitute the closest practical neighbors of this work.
+Several open-source frameworks produce shellcode loaders and are themselves instances of the class of programs the pipeline model describes.
 Donut~\cite{donut} converts .NET assemblies or native PE files into position-independent shellcode packaged with a loader stub, and is widely reused as a building block.
 ScareCrow~\cite{scarecrow} focuses on EDR bypass through direct syscalls, DLL unhooking, and sideloaded entry points.
 Inceptor~\cite{inceptor} provides a template-driven build system for AV/EDR evasion, supporting multiple encoders, encryption primitives, and injection techniques.
 Havoc~\cite{havoc} is a post-exploitation command-and-control framework whose implant includes a configurable loader module with encoding and syscall options.
 
-These tools are valuable for operational use but are not organized for systematic research.
-They typically expose a flat option surface rather than a per-stage decomposition, bundle multiple concerns inside opaque templates, and are not paired with a controlled experimental harness that isolates the effect of each internal choice on detection outcomes.
-As a result, they provide neither a vocabulary nor a reproducible test fixture suitable for the kind of stage-level comparative study we aim to enable.
+These frameworks are operator tools and are effective at their stated purpose.
+From the perspective of this paper, each is also a generator that produces instances of the class the pipeline model describes: the loader emitted by any of them can itself be expressed as a tuple $C$ by reading off its stage choices.
+The platform presented in this paper complements these tools by generating instances from explicit tuples rather than from operator flags, and by coupling generation with a telemetry harness intended for stage-level comparison.
+Its purpose is to provide a descriptive vocabulary and a reproducible fixture for research, not to substitute for any of them.
 
 \subsection{Individual Loader Techniques in the Literature}
 

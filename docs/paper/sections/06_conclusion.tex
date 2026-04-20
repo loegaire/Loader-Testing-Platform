@@ -3,13 +3,15 @@
 % =============================================================================
 \section{Conclusion}
 
-This paper presented a six-stage pipeline model that decomposes a shellcode loader into sequential functional stages---Anti-Analysis, Storage, Allocation, Transformation, Writing, and Execution---together with the notation $L_i.T_j$ for identifying techniques and the tuple $C$ for describing complete loader configurations.
+This paper presented a descriptive six-stage pipeline model that decomposes a shellcode loader into sequential functional stages---Anti-Analysis, Storage, Allocation, Transformation, Writing, and Execution---together with the notation $L_i.T_j$ for identifying techniques and the tuple $C$ for describing complete loader configurations.
 The model is grounded in the shellcode/loader separation: the shellcode answers \emph{what} the malware does, the loader answers \emph{how} it reaches execution, and holding one fixed lets the other be studied systematically.
+The model is intended to describe any shellcode loader, including those produced by existing operator frameworks, by expressing each as a tuple of stage choices.
 
-Building on the model, we implemented a platform that compiles loader variants at preprocessor time and evaluates them on Windows virtual machines against Microsoft Defender.
-Because stage selection is resolved at compile time, each variant contains only the chosen code, and detection differences between variants can be attributed to the stage choices being varied rather than to runtime dispatch logic inside the loader.
+To instantiate the model concretely, we implemented a platform that compiles loader variants at preprocessor time and runs them on Windows virtual machines, collecting stage-resolved telemetry from Microsoft Defender and Sysmon.
+Because stage selection is resolved at compile time, each variant contains only the chosen code, and observable differences between variants can be attributed to the stage choices being varied rather than to runtime dispatch logic inside the loader.
+Windows Defender in this setting serves as a detection reference that grounds the decomposition in measurable behavior; it is not a target to be defeated, and other evaluation methods (additional AV engines, EDR telemetry, manual analysis, memory forensics) can play the same role in future extensions.
 
 On the defensive side, we proposed a stage-aware detection methodology that associates each pipeline stage with candidate telemetry sources and rule formats, formalized as a mapping from techniques to (telemetry source, observable indicator, detection rule) triples.
 Populating this mapping with concrete Sigma and YARA rules and running them against the platform's telemetry is the immediate next step, and the point at which the methodology moves from proposal to validated method.
 
-Our broader aim is to make shellcode loaders a more tractable object of study---explicit enough to be described, generated, and evaluated in controlled ways, and decomposed enough that defensive work can target specific internal stages rather than treat loaders as opaque binaries.
+The primary contribution of this work is the descriptive model---a shared vocabulary and reproducible fixture for studying shellcode loaders as a class, suited to research and learning rather than to any specific operational goal.

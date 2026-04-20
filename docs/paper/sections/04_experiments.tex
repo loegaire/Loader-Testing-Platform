@@ -7,10 +7,12 @@
 
 \begin{itemize}[leftmargin=*, itemsep=1pt]
     \item \textbf{Host}: Linux (Ubuntu 22.04) with MinGW-w64 and NASM for cross-compilation of Windows PE binaries, and KVM + libvirt for VM management.
-    \item \textbf{Target VM}: Windows~10 22H2, with Windows Defender enabled (definitions updated at test time) and Sysmon~\cite{sysmon} configured for loader-relevant events.
+    \item \textbf{Target VM}: Windows~10 22H2, with Windows Defender enabled (definitions refreshed at the start of each batch and recorded with the results) and Sysmon~\cite{sysmon} configured for loader-relevant events.
     \item \textbf{Shellcode (fixed)}: a single \texttt{msfvenom}-generated reverse-TCP shellcode, held constant across all runs as a controlled variable so that observed differences are attributable to loader choices rather than payload content.
-    \item \textbf{Security product}: Windows Defender only. Multi-product evaluation is scoped as future work (Section~5.3).
-    \item \textbf{Execution}: Payloads run under a standard user account. A clean snapshot is restored before each test.
+    \item \textbf{Security product}: Windows Defender only. Multi-product evaluation is scoped as future work (Section~5.5).
+    \item \textbf{Execution}: payloads run under a standard user account; a clean snapshot is restored before each run; the VM network is isolated from the Internet to eliminate variability from Defender's cloud-delivered protection lookups.
+    \item \textbf{Replication protocol}: the controlled environment---clean snapshot, network isolation, locked Defender engine and definition versions---makes outcomes for a fixed binary effectively deterministic. We confirm this up front by running one configuration three times as a sanity check, and then execute each configuration once for the main results. Any cell whose outcome contradicts the expected stage-level pattern is re-executed twice; cells whose three runs disagree are reported separately rather than folded into the main table.
+    \item \textbf{Recorded per run}: the technique tuple $C$, the Defender engine and platform version, the signature-definition version, the host and VM build numbers, and the shellcode SHA-256. These fields make a run self-identifying and support re-verification when definitions change.
 \end{itemize}
 
 \subsection{Implemented Techniques}
@@ -49,13 +51,13 @@ The API abstraction layer supports two modes: \texttt{winapi} and direct \texttt
 
 \subsection{AV Detection Results}
 
-Table~\ref{tab:results} reports detection outcomes against Windows Defender, covering all combinations of L3 (Transformation) and L5 (Execution) with the two fully implemented API modes.
+Table~\ref{tab:results} reports detection outcomes observed with Windows Defender as the detection reference, covering all combinations of L3 (Transformation) and L5 (Execution) with the two fully implemented API modes.
 Values in the table are to be populated from experimental runs; they are intentionally left pending at the time of writing so that the analysis below is kept at the level of hypotheses.
 Outcome codes follow the classification introduced in Section~3.2.3: S~=~Success (callback received), SD~=~Static Detection (deleted before execution), RD~=~Runtime Detection (blocked during execution), and TB~=~Transfer Blocked (deleted during file transfer).
 
 \begin{table}[htbp]
     \centering
-    \caption{Detection outcomes against Windows Defender, per L3/L5 configuration and API mode. L2 is fixed at \texttt{T2.1} (local RWX) with \texttt{T4.1} (\texttt{memcpy}); L0 is \texttt{T0.0} (none); L1 is \texttt{T1.1} (\texttt{.rdata}).}
+    \caption{Detection outcomes observed with Windows Defender as the detection reference, per L3/L5 configuration and API mode. L2 is fixed at \texttt{T2.1} (local RWX) with \texttt{T4.1} (\texttt{memcpy}); L0 is \texttt{T0.0} (none); L1 is \texttt{T1.1} (\texttt{.rdata}).}
     \label{tab:results}
     \small
     \begin{tabular}{@{}llcc@{}}
@@ -94,6 +96,6 @@ Callback-based execution (\texttt{T5.2}) and fiber-based execution (\texttt{T5.3
 
 \textit{API mode as a secondary factor.}
 When static detection already fires, the API mode is not expected to matter, because the binary is flagged before any runtime activity.
-When static detection is evaded, direct syscalls bypass user-mode API hooks on allocation, writing, and thread creation, and the API mode is expected to become relevant in shifting outcomes from RD to S.
+When static detection does not fire, direct syscalls bypass user-mode API hooks on allocation, writing, and thread creation, and the API mode is then expected to correlate with outcome changes from RD to S.
 
 Runs that deviate from these patterns will indicate either detection behavior of Windows Defender not captured by the stage-level model, or limitations of the model itself; both feed back into the methodology.

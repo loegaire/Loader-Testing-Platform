@@ -12,37 +12,92 @@ Comparing two loaders, or resolving terminology disagreements, reduces to compar
 
 \textit{A vehicle for controlled experiments.}
 Because technique selection happens at preprocessor time, changing a single stage while keeping others constant produces a binary whose only code difference is inside that stage.
-Detection differences between two such binaries can then be attributed to the changed stage with fewer confounding variables than comparing hand-written loaders.
+Detection differences between two such binaries can then be attributed to the changed stage with fewer confounding variables than comparing hand-written loaders or templated outputs.
 
 \textit{Complementarity with MITRE ATT\&CK.}
 ATT\&CK labels \emph{what} an attacker does at a strategic level; the pipeline model describes \emph{how} a specific loader works internally.
 A loader classified under T1055 Process Injection in ATT\&CK can be further decomposed into its six stages and summarized as a $C$-tuple, which makes the internal mechanics explicit without displacing the ATT\&CK label.
 
-\subsection{Limitations}
+\subsection{Position Relative to Existing Loader Frameworks}
+
+Donut~\cite{donut}, ScareCrow~\cite{scarecrow}, Inceptor~\cite{inceptor}, and Havoc~\cite{havoc} are operator tools whose design optimizes for producing an effective loader.
+From the perspective of this paper they are not competitors but additional instances of the class the model is intended to describe: each of their outputs can itself be expressed as a tuple $C$ by reading off its stage choices.
+Any of these frameworks provides more techniques than the platform presented here, and a practitioner who wants an operational loader should use one of them.
+The contribution of our platform is therefore not a better loader; it is a generator that lives in the same descriptive space, oriented toward research and learning rather than toward operations.
+It is useful to be explicit about what that orientation changes.
+
+\textit{Compile-time pure selection, no runtime dispatch.}
+Technique selection in our platform is resolved entirely at preprocessor time, and each technique is a self-contained header with a single \texttt{inline} function.
+A variant built with, for example, \texttt{-t3 aes} therefore contains only the AES code at stage L3, with no runtime dispatcher, no template machinery, and no shared registry of other techniques that could themselves become a detection signal.
+Operator frameworks typically rely on template engines or runtime option readers; such machinery is appropriate for their goal but introduces confounds when the goal is to attribute a detection difference to a single stage choice.
+
+\textit{A coordinate system anchored to the pipeline.}
+Flags in operator tools (\texttt{--encoder xor}, \texttt{--injection CreateThread}, \texttt{--sandbox-bypass sleep}) live in a flat option surface, and changing one flag can ripple through internal paths not visible to the user.
+In our platform, the effect of changing \texttt{-t3 none} to \texttt{-t3 aes} is localized to one file under \texttt{src/techniques/3\_transformation/}, and every technique carries a stable $L_i.T_j$ identifier.
+This coordinate system makes per-stage attribution tractable; the same change expressed in Inceptor would touch multiple template fragments that the user does not directly see.
+
+\textit{Integrated build--execute--observe loop.}
+Operator tools produce binaries; downstream deployment and AV measurement are on the user.
+Our platform integrates build, VM execution, telemetry collection, and outcome classification behind a single CLI invocation.
+In a research context this is the infrastructure that determines whether an experiment is reproducible and whether per-stage effects can be measured at scale.
+
+\textit{Paired with a stage-aware detection methodology.}
+The operator tools above are red-team only.
+Our platform is paired with a proposed detection methodology (Section~3.3) designed to co-evolve with the technique library: every new technique comes with a question about its detection surface, and every new rule is slotted into an existing stage.
+That co-evolution is a design goal here, not a feature the operator tools are optimized for.
+
+These differences are of orientation rather than capability.
+A reader interested in the largest practical arsenal should reach for Inceptor or Havoc.
+The contribution of the present work is the descriptive model of the loader class together with a concrete generator that produces instances within the model in a form suited to research, learning, and the development of a matching detection vocabulary.
+
+\subsection{Limitations and Threats to Validity}
 
 \begin{enumerate}[leftmargin=*, itemsep=2pt]
     \item \textit{Small technique inventory.}
     The platform currently provides 1--3 techniques per stage.
-    Several categories that would be important for a broader survey are not yet implemented, including remote allocation, APC queuing, process hollowing, and network-based storage.
+    Categories important for a broader survey---remote allocation, APC queuing, process hollowing, network-based storage---are not yet implemented and are part of the planned expansion.
 
     \item \textit{Single security product.}
     Evaluation is limited to Windows Defender.
-    Commercial EDR and other AV products use different telemetry and heuristics; results are not expected to transfer directly.
+    Commercial EDR and other AV products use different telemetry and heuristics; detection counts and verdict patterns are not expected to transfer directly.
+    The pipeline model and the methodology are product-agnostic, but their usefulness against non-Defender products can only be confirmed empirically.
 
     \item \textit{Single, fixed shellcode.}
-    We fix the shellcode to isolate loader effects on detection.
-    This is a deliberate methodological choice, but it means the study does not address payload-level factors such as shellcode size, staged versus reflective payloads, or obfuscation inside the shellcode itself.
-    These would require a separate axis of variation.
+    Fixing the shellcode isolates loader effects, but it means the study does not address payload-level factors such as shellcode size, staged versus reflective payloads, or obfuscation inside the shellcode itself.
+    Those would require a separate axis of variation.
 
     \item \textit{Detection methodology is proposed, not validated.}
     The stage-aware detection methodology of Section~3.3 is a design.
     No rules have been written and no rule-triggering data exist.
-    Its usefulness has to be established in subsequent work before claims can be made about coverage or gap detection.
+    The claims this paper makes about the methodology are structural (that the pipeline admits a per-stage detection mapping and that the mapping supports coverage and gap analysis in principle); claims about its effectiveness against real malware or real EDRs are deferred.
 
-    \item \textit{Non-stationary targets.}
-    AV definitions and EDR heuristics change frequently, so a single-timepoint experiment captures a snapshot.
-    Longitudinal studies are needed to assess stability.
+    \item \textit{Non-stationary target.}
+    Defender definitions and cloud-delivered heuristics change frequently.
+    Our protocol mitigates this by recording the Defender engine and definition versions with every run and by isolating the VM network so that cloud lookups are not in the loop, but a single-timepoint experiment is still a snapshot.
+    Longitudinal replication is needed to assess stability over definition updates.
+
+    \item \textit{Residual environmental variation.}
+    Fixing the shellcode does not fix every uncontrolled variable.
+    Host compiler behavior, VM build version, and transient system state during boot can all influence telemetry at the margins.
+    We mitigate this by restoring a clean snapshot before every run, by replicating each configuration three times (Section~4.1), and by flagging non-majority runs for separate reporting.
+    Remaining variance is acknowledged rather than claimed away.
+
+    \item \textit{Statistical power.}
+    Each configuration in Table~\ref{tab:results} contributes one cell with a discrete outcome code.
+    Three replications per configuration is sufficient to detect gross instability but insufficient for fine-grained rate estimation.
+    The tables should therefore be read as behavior patterns rather than as precise detection probabilities.
+
+    \item \textit{Scope of the model.}
+    The six-stage model is formulated for shellcode loaders targeting Windows.
+    Extending it to Linux ELF loaders, macOS Mach-O loaders, or managed-runtime loaders requires revisiting stage definitions; we do not claim in this paper that the decomposition transfers unchanged to those environments.
 \end{enumerate}
+
+\subsection{Reproducibility}
+
+Every claim in this paper, once experiments are populated, depends on a small set of artifacts that need to be named explicitly.
+A run is identified by the tuple $C$, the Defender engine version, the Defender definition version, the Windows build number, the Sysmon version and configuration hash, and the shellcode SHA-256.
+The platform records these per run and emits them in the CSV row alongside the outcome code, so that a later reader can re-execute the same configuration and check whether the same verdict is produced.
+The source code of the platform, the Sysmon configuration, the exact \texttt{msfvenom} invocation used to generate the reference shellcode, and the log-analysis scripts are provided with the paper.\footnote{Repository and commit identifier: \textit{to be added at camera-ready}.}
 
 \subsection{Future Work}
 
@@ -52,7 +107,7 @@ A loader classified under T1055 Process Injection in ATT\&CK can be further deco
     This is the most direct step to turn Section~3.3 from a proposal into a validated method.
 
     \item \textit{Technique expansion.}
-    Add remote injection (\texttt{VirtualAllocEx} $\rightarrow$ \texttt{WriteProcessMemory} $\rightarrow$ \texttt{CreateRemoteThread} or APC queuing), process hollowing, network-backed storage, and richer anti-analysis (timing checks, sandbox fingerprinting) so that the combinatorial space is large enough for meaningful comparison.
+    Add remote injection (\texttt{VirtualAllocEx} $\rightarrow$ \texttt{WriteProcessMemory} $\rightarrow$ \texttt{CreateRemoteThread} or APC queuing), process hollowing, network-backed storage, and richer anti-analysis (timing checks, sandbox fingerprinting) so that the combinatorial space is large enough for statistical comparison.
 
     \item \textit{Multi-product evaluation.}
     Integrate additional AV engines and at least one commercial EDR to build a cross-product detection matrix.
@@ -63,5 +118,5 @@ A loader classified under T1055 Process Injection in ATT\&CK can be further deco
     This tests the generality of the decomposition and builds a structured knowledge base of real-world configurations.
 
     \item \textit{Longitudinal tracking.}
-    Re-run a fixed configuration set on a rolling schedule to track how detection outcomes shift as AV definitions and EDR models are updated.
+    Re-run a fixed configuration set on a rolling schedule to track how detection outcomes shift as Defender definitions and EDR models are updated.
 \end{itemize}

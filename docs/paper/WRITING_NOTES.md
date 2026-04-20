@@ -11,6 +11,21 @@ Tôi chia malware thành hai phần:
 
 Paper này tập trung hoàn toàn vào **loader**. Shellcode chỉ là biến kiểm soát (controlled variable) để cô lập ảnh hưởng của loader.
 
+### 1.1 Positioning quan trọng nhất
+
+Paper của tôi là một **mô hình mô tả (descriptive model)** cho class shellcode loader — không phải công cụ evasion.
+
+- 6-stage pipeline + `L_i.T_j` + tuple `C` là framework mô tả, áp dụng cho **bất kỳ** shellcode loader nào, bao gồm cả các loader có sẵn (Donut, ScareCrow, Inceptor, Havoc) và loader viết tay.
+- Platform của tôi là **một generator** tạo instance trong model từ tuple `C` tường minh. Các OSS framework là các generator khác (operator-oriented), cùng trong không gian model.
+- **Defender chỉ là detection reference** để chứng minh rằng các boundary giữa các stage tương ứng với các khác biệt quan sát được (tức decomposition có cơ sở). Không phải target để bypass. Bất kỳ phương pháp evaluation nào khác (Sysmon telemetry, manual analysis, memory forensics) cũng có thể đóng vai trò này.
+
+### 1.2 Quy tắc ngôn ngữ rút ra
+
+- **Không** dùng "evaluates X against Windows Defender" / "tests X against Defender" → dùng "using Windows Defender as a detection reference" / "collects telemetry from Defender".
+- **Không** gọi Donut/ScareCrow/Inceptor/Havoc là competitor. Gọi là instances, cases, hoặc other generators within the same class.
+- Khác biệt so với các framework khác = **orientation** (research vs operator), không phải capability (họ có nhiều technique hơn).
+- Kết quả thực nghiệm = bằng chứng cho tính hợp lệ của decomposition ("stage changes produce distinct observable patterns"), không phải claim evasion ("the loader bypasses Defender").
+
 ## 2. Phạm vi (giữ chặt, không mở rộng)
 
 - **Target OS**: Windows only. Không cross-platform.

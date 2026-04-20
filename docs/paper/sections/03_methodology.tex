@@ -86,11 +86,69 @@ Orthogonal to the pipeline, an API abstraction layer determines how Windows syst
 The platform supports two modes: (i) standard Windows API through \texttt{kernel32} and \texttt{ntdll}, and (ii) direct syscalls through custom assembly stubs that issue the \texttt{syscall} instruction with system service numbers resolved dynamically from a loaded \texttt{ntdll}.
 The API mode applies to stages L2, L4, and L5, which lets us evaluate the effect of API invocation style independently from stage technique selection.
 
+\subsubsection{Stage Interactions: the W\texorpdfstring{$^{\wedge}$}{\textasciicircum}X Pattern}
+\label{sec:wxpattern}
+
+Although stages are defined with independent responsibilities, some technique choices in different stages are coupled, and the coupling carries detection implications that are central to the analysis in later sections.
+The clearest example is the pairing of L2 and L4, which jointly determine the memory-protection profile of the shellcode buffer.
+
+Two valid pairings are implemented:
+
+\begin{itemize}[leftmargin=*, itemsep=2pt]
+    \item \textit{Single-step RWX}: (\texttt{T2.1}, \texttt{T4.1}).
+    L2 allocates with \texttt{PAGE\_EXECUTE\_READWRITE}; L4 copies the shellcode with \texttt{memcpy}.
+    The buffer is writable and executable at the same time.
+
+    \item \textit{Two-step W$^{\wedge}$X}: (\texttt{T2.2}, \texttt{T4.2}).
+    L2 allocates with \texttt{PAGE\_READWRITE}; L4 copies the shellcode and then flips the protection to \texttt{PAGE\_EXECUTE\_READ} via \texttt{VirtualProtect}.
+    At no point is the buffer both writable and executable.
+\end{itemize}
+
+Both pairings produce the same end-state functionality---the shellcode executes in both cases---but they differ in the telemetry they generate.
+The first pairing produces a single allocation event with an RWX protection mask, which is a well-established heuristic signal for suspicious memory preparation.
+The second pairing produces an initial RW allocation (benign-looking in isolation) followed by a \texttt{VirtualProtect} call that flips the region to executable; this latter sequence is also observable, but it overlaps with patterns used by legitimate JIT compilers and some packers, so a signature-only rule targeting it is noisier.
+Section~3.3 captures the two as separate entries in the detection surface for L2 and L4.
+
+Other stage pairs show weaker but non-zero coupling.
+The L3 choice affects both the payload size that L4 writes and the entropy visible to static scans targeting L1.
+The L5 choice affects the API trace generated around L4 when writing and execution occur in the same process versus across processes.
+These couplings motivate comparing loader variants as complete tuples $C$ rather than one stage at a time.
+
 % -----------------------------------------------------------------------------
 \subsection{Build and Test Platform}
 % -----------------------------------------------------------------------------
 
 The platform implements the pipeline model through three components that operate end-to-end, from a single CLI invocation to a detection verdict.
+Figure~\ref{fig:platform} summarizes the workflow.
+
+\begin{figure*}[t]
+    \centering
+    \begin{tikzpicture}[
+        box/.style={draw, rounded corners=2pt, align=center, font=\small,
+                    minimum height=0.95cm, minimum width=2.9cm},
+        arr/.style={->, >=stealth, thick}
+    ]
+    \node[box] (cli) at (0,1.3)    {CLI invocation\\\scriptsize \texttt{-t0..-t5 --api}};
+    \node[box] (py)  at (3.7,1.3)  {Build engine\\\scriptsize encrypt + \texttt{payload\_data.h}};
+    \node[box] (cc)  at (7.4,1.3)  {MinGW + NASM\\\scriptsize \texttt{\#ifdef} routing};
+    \node[box] (bin) at (11.1,1.3) {PE binary\\\scriptsize single variant};
+
+    \node[box] (vm)  at (11.1,-0.5) {VM execution\\\scriptsize KVM, std.\ user};
+    \node[box] (col) at (7.4,-0.5)  {Telemetry collector\\\scriptsize Defender + Sysmon};
+    \node[box] (cls) at (3.7,-0.5)  {Classifier};
+    \node[box] (out) at (0,-0.5)    {Outcome verdict\\\scriptsize S / SD / RD / TB};
+
+    \draw[arr] (cli) -- (py);
+    \draw[arr] (py)  -- (cc);
+    \draw[arr] (cc)  -- (bin);
+    \draw[arr] (bin) -- (vm);
+    \draw[arr] (vm)  -- (col);
+    \draw[arr] (col) -- (cls);
+    \draw[arr] (cls) -- (out);
+    \end{tikzpicture}
+    \caption{End-to-end platform workflow. A single CLI invocation drives build, execution in an isolated VM, telemetry collection, and outcome classification, producing one $(C, \text{outcome})$ pair per run.}
+    \label{fig:platform}
+\end{figure*}
 
 \subsubsection{Build Engine}
 
@@ -129,7 +187,7 @@ We classify each test run into one of four outcomes: \textit{Success} (callback 
 
 The pipeline model is also intended to serve as a scaffolding for detection engineering.
 This subsection describes the methodology we propose for that purpose.
-Rule implementation and empirical validation of the methodology are scoped as future work (Section~5.3); this paper presents its design only.
+Rule implementation and empirical validation of the methodology are scoped as future work (Section~5.5); this paper presents its design only.
 
 \subsubsection{Detection Surface Mapping}
 

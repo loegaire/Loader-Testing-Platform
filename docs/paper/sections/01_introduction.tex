@@ -32,14 +32,18 @@ This paper makes three contributions:
 \begin{enumerate}[leftmargin=*, itemsep=2pt]
     \item A six-stage pipeline model that decomposes a shellcode loader into sequential stages---Anti-Analysis, Storage, Allocation, Transformation, Writing, Execution---together with a notation $L_i.T_j$ for identifying techniques within each stage.
 
-    \item An automated build-and-test platform that implements the model through compile-time technique selection and evaluates generated loader variants in isolated Windows virtual machines against Windows Defender.
+    \item An automated build-and-test platform that instantiates the model through compile-time technique selection, runs generated variants in isolated Windows virtual machines, and collects stage-resolved telemetry from Windows Defender and Sysmon.
 
     \item A stage-aware detection methodology that links each pipeline stage to candidate telemetry sources and rule formats, providing a structured framework for future detection-rule development; rule implementation and empirical validation are scoped as future work.
 \end{enumerate}
 
+The model is intended to be descriptive rather than prescriptive: its purpose is to express any shellcode loader---including those produced by existing operator frameworks---as a tuple $C$ of stage choices, so that loaders can be compared, classified, and studied in a common vocabulary.
+Windows Defender serves throughout the paper as a \textit{detection reference} used to check that stage-level distinctions correspond to observable differences in loader behavior.
+It is not a target of the study.
+
 % --- Key findings preview ---
-Preliminary experiments against Windows Defender indicate that the Transformation stage is the dominant static-detection differentiator, while Execution techniques and API methods influence behavioral detection outcomes.
-These observations support the value of the proposed stage-level decomposition as a lens for studying shellcode loaders.
+Preliminary experiments using Windows Defender as a detection reference indicate that stage-level changes produce distinct observable patterns: the Transformation stage dominates static-detection outcomes, while Execution techniques and API mode influence behavioral telemetry.
+These observations support the decomposition's stage boundaries as capturing distinctions that matter to detection behavior---evidence for the model's classification basis, not a claim about evasion effectiveness.
 
 % --- Paper organization ---
 The rest of the paper is organized as follows.

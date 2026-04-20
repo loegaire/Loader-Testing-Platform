@@ -34,6 +34,8 @@
 \usepackage{tabularx}
 \usepackage{cite}
 \usepackage{url}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning}
 
 \hypersetup{
     colorlinks=true,
@@ -97,12 +99,12 @@
 
 {\small\sffamily
 \noindent\textbf{Abstract.}
-Shellcode loaders are central to modern malware, yet knowledge of their internal structure is scattered across blog posts, open-source projects, and conference talks, with no shared framework for systematic comparison.
-This paper proposes a six-stage pipeline model that decomposes a shellcode loader into sequential stages---Anti-Analysis, Storage, Allocation, Transformation, Writing, Execution---together with a notation $L_i.T_j$ for identifying techniques within each stage.
-Using this model, we implement an automated build platform that generates loader variants through compile-time technique selection and evaluates them in isolated Windows virtual machines.
-To isolate the contribution of the loader itself, we keep the payload fixed---a single \texttt{msfvenom} reverse-TCP shellcode---and vary per-stage techniques while measuring detection outcomes against Windows Defender.
-As a complementary direction, we outline a stage-aware detection methodology that maps each stage to candidate telemetry sources and rule formats; its rule development and empirical validation are left as future work.
-Preliminary results indicate that the Transformation stage dominates static-detection outcomes while Execution techniques influence behavioral detection, supporting the value of stage-level analysis of shellcode loaders.
+Shellcode loaders are central to modern malware, yet knowledge of their internal structure is scattered across blog posts, open-source projects, and conference talks, with no shared framework for systematic study.
+This paper proposes a descriptive six-stage pipeline model that decomposes any shellcode loader into sequential stages---Anti-Analysis, Storage, Allocation, Transformation, Writing, Execution---together with a notation $L_i.T_j$ for identifying techniques within each stage.
+The model is intended to cover loaders produced by existing frameworks such as Donut, ScareCrow, Inceptor, and Havoc, as well as hand-written ones, by expressing each as a tuple $C$ of stage choices.
+To instantiate the model concretely, we implement a build-and-test platform that generates variants from explicit tuples at preprocessor time and runs them in isolated Windows VMs, collecting stage-resolved telemetry from Windows Defender and Sysmon; the payload is held fixed (a single \texttt{msfvenom} reverse-TCP shellcode) so that observed differences can be attributed to stage choices.
+We also outline a stage-aware detection methodology that maps each stage to candidate telemetry sources and rule formats; rule development and empirical validation are left as future work.
+The primary contribution is the descriptive model---a shared vocabulary and reproducible fixture for studying shellcode loaders as a class---rather than a particular evasion toolkit; Defender serves here as a detection reference to ground the decomposition empirically, not as a target.
 }
 
 \vspace{4pt}
