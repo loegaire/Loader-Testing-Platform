@@ -13,6 +13,10 @@
 #include "../5_execution/exec_fiber.h"
 #endif
 
+#ifdef T5_EXEC_REMOTE_THREAD
+#include "../5_execution/exec_remote_thread.h"
+#endif
+
 
 inline BOOL Run_T5_Execute(TechniqueContext* ctx)
 {
@@ -27,6 +31,10 @@ inline BOOL Run_T5_Execute(TechniqueContext* ctx)
 
 #ifdef T5_EXEC_FIBER
     return Stage5_Exec_Fiber(ctx);
+#endif
+
+#ifdef T5_EXEC_REMOTE_THREAD
+    return Stage5_Exec_RemoteThread(ctx);
 #endif
 
     return FALSE;

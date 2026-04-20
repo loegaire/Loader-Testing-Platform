@@ -15,6 +15,7 @@ STAGE_FLAGS = {
     't2': {
         'local':    '-DT2_ALLOC_LOCAL',
         'local_rw': '-DT2_ALLOC_LOCAL_RW',
+        'remote':   '-DT2_ALLOC_REMOTE',
     },
     # -t3
     't3': {
@@ -26,12 +27,14 @@ STAGE_FLAGS = {
     't4': {
         'local':    '-DT4_WRITE_LOCAL',
         'local_rx': '-DT4_WRITE_LOCAL_RX',
+        'remote':   '-DT4_WRITE_REMOTE',
     },
     # -t5
     't5': {
-        'local':    '-DT5_EXEC_LOCAL',
-        'monitors': '-DT5_EXEC_DISPLAY_MONITORS',
-        'fiber':    '-DT5_EXEC_FIBER',
+        'local':         '-DT5_EXEC_LOCAL',
+        'monitors':      '-DT5_EXEC_DISPLAY_MONITORS',
+        'fiber':         '-DT5_EXEC_FIBER',
+        'remote_thread': '-DT5_EXEC_REMOTE_THREAD',
     },
 }
 

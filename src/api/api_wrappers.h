@@ -115,6 +115,40 @@ inline HANDLE MyCreateThreadEx(
 #endif
 }
 
+inline BOOL MyWriteProcessMemory(
+    HANDLE hProcess,
+    LPVOID lpBaseAddress,
+    LPCVOID lpBuffer,
+    SIZE_T nSize,
+    SIZE_T* lpNumberOfBytesWritten
+) {
+#ifdef USE_DIRECT_SYSCALLS
+
+    SIZE_T written = 0;
+    NTSTATUS status = sysNtWriteVirtualMemory(
+        hProcess,
+        lpBaseAddress,
+        (PVOID)lpBuffer,
+        nSize,
+        &written
+    );
+
+    if (lpNumberOfBytesWritten) *lpNumberOfBytesWritten = written;
+    return status == 0;
+
+#else
+
+    return WriteProcessMemory(
+        hProcess,
+        lpBaseAddress,
+        lpBuffer,
+        nSize,
+        lpNumberOfBytesWritten
+    );
+
+#endif
+}
+
 inline DWORD MyWaitForSingleObject(
     HANDLE hObject,
     DWORD dwMilliseconds

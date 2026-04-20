@@ -6,6 +6,7 @@ extern g_ssn_NtAllocateVirtualMemory
 extern g_ssn_NtProtectVirtualMemory
 extern g_ssn_NtCreateThreadEx
 extern g_ssn_NtWaitForSingleObject
+extern g_ssn_NtWriteVirtualMemory
 ; ...
 
 ; Khai báo các hàm để C++ có thể gọi
@@ -13,6 +14,7 @@ global sysNtAllocateVirtualMemory
 global sysNtProtectVirtualMemory
 global sysNtCreateThreadEx
 global sysNtWaitForSingleObject
+global sysNtWriteVirtualMemory
 ; ...
 
 section .text
@@ -38,6 +40,12 @@ sysNtCreateThreadEx:
 sysNtWaitForSingleObject:
     mov r10, rcx
     mov eax, dword [rel g_ssn_NtWaitForSingleObject]
+    jmp qword [rel g_syscall_addr]
+    ret
+
+sysNtWriteVirtualMemory:
+    mov r10, rcx
+    mov eax, dword [rel g_ssn_NtWriteVirtualMemory]
     jmp qword [rel g_syscall_addr]
     ret
 

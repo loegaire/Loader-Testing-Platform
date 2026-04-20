@@ -9,6 +9,10 @@
 #include "../2_allocation/alloc_local_rw.h"
 #endif
 
+#ifdef T2_ALLOC_REMOTE
+#include "../2_allocation/alloc_remote.h"
+#endif
+
 inline BOOL Run_T2_Allocation(TechniqueContext* ctx)
 {
 #ifdef T2_ALLOC_LOCAL
@@ -17,6 +21,10 @@ inline BOOL Run_T2_Allocation(TechniqueContext* ctx)
 
 #ifdef T2_ALLOC_LOCAL_RW
     return Stage2_Alloc_Local_RW(ctx);
+#endif
+
+#ifdef T2_ALLOC_REMOTE
+    return Stage2_Alloc_Remote(ctx);
 #endif
 
     return FALSE;

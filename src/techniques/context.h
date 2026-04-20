@@ -15,6 +15,7 @@ typedef struct {
     unsigned char* transformed;   // decrypted buffer
 
     unsigned char* allocated_mem;
-    HANDLE target_process;
+    HANDLE target_process;          // Set by remote-allocation techniques (T2.3)
+    HANDLE target_thread;           // Suspended main thread of target process
 
 } TechniqueContext;

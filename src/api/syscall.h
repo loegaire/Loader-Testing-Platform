@@ -8,6 +8,7 @@ extern DWORD g_ssn_NtAllocateVirtualMemory;
 extern DWORD g_ssn_NtProtectVirtualMemory;
 extern DWORD g_ssn_NtCreateThreadEx;
 extern DWORD g_ssn_NtWaitForSingleObject;
+extern DWORD g_ssn_NtWriteVirtualMemory;
 // ... thêm các SSN khác ở đây
 
 // Khai báo các hàm assembly. Tên hàm giữ nguyên nhưng không cần truyền SSN nữa.
@@ -16,5 +17,6 @@ extern "C" {
     NTSTATUS sysNtProtectVirtualMemory(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
     NTSTATUS sysNtCreateThreadEx(PHANDLE, ACCESS_MASK, PVOID, HANDLE, PVOID, PVOID, ULONG, SIZE_T, SIZE_T, SIZE_T, PVOID);
     NTSTATUS sysNtWaitForSingleObject(HANDLE, BOOLEAN, PLARGE_INTEGER);
+    NTSTATUS sysNtWriteVirtualMemory(HANDLE, PVOID, PVOID, SIZE_T, PSIZE_T);
     // ... thêm các hàm assembly khác ở đây
 }

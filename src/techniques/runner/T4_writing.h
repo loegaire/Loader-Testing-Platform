@@ -9,6 +9,10 @@
 #include "../4_writing/write_local_rx.h"
 #endif
 
+#ifdef T4_WRITE_REMOTE
+#include "../4_writing/write_remote.h"
+#endif
+
 inline BOOL Run_T4_Write(TechniqueContext* ctx)
 {
 #ifdef T4_WRITE_LOCAL
@@ -17,6 +21,10 @@ inline BOOL Run_T4_Write(TechniqueContext* ctx)
 
 #ifdef T4_WRITE_LOCAL_RX
     return Stage4_Write_Local_RX(ctx);
+#endif
+
+#ifdef T4_WRITE_REMOTE
+    return Stage4_Write_Remote(ctx);
 #endif
 
     return FALSE;

@@ -20,6 +20,7 @@ DWORD g_ssn_NtAllocateVirtualMemory = 0;
 DWORD g_ssn_NtProtectVirtualMemory = 0;
 DWORD g_ssn_NtCreateThreadEx = 0;
 DWORD g_ssn_NtWaitForSingleObject = 0;
+DWORD g_ssn_NtWriteVirtualMemory = 0;
 
 // --- Entry Point ---
 extern "C" int main() {
