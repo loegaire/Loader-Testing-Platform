@@ -112,19 +112,15 @@ def phase_d():
     ]
 
 
-def phase_e():
-    """Remote injection chain (T2.3 + T4.3 + T5.4) — vary L3 and API.
-
-    Generates the cross-process telemetry that local-only chains cannot
-    produce (Sysmon Event 8 cross-image, Event 10 cross-process).
-    """
+def _remote_factorial(prefix, t2_value):
+    """Helper: factorial for a remote-style L2 + remote write/execute chain."""
     configs = []
     idx = 1
     for t3 in ["none", "xor", "aes"]:
         for api in ["winapi", "syscalls"]:
             configs.append((
-                f"E{idx}",
-                _baseline(t2="remote", t4="remote", t5="remote_thread",
+                f"{prefix}{idx}",
+                _baseline(t2=t2_value, t4="remote", t5="remote_thread",
                           t3=t3, api_method=api),
                 1,
             ))
@@ -132,7 +128,31 @@ def phase_e():
     return configs
 
 
-PHASES = {"A": phase_a, "B": phase_b, "C": phase_c, "D": phase_d, "E": phase_e}
+def phase_e():
+    """Remote injection into existing explorer.exe (T2.3 + T4.3 + T5.4).
+
+    Generates Event 10 ProcessAccess (payload -> explorer) and Event 8
+    CreateRemoteThread (cross-process). No Event 1 for explorer (already
+    running). Distinct from local chains.
+    """
+    return _remote_factorial("E", "remote")
+
+
+def phase_f():
+    """Spawn-and-inject chain (T2.4 + T4.3 + T5.4).
+
+    Spawns notepad.exe suspended, then runs the same remote write/execute
+    path. Adds Event 1 ProcessCreate (parent=payload, child=notepad) on
+    top of the Phase E signal, exercising a different part of the
+    detection surface (suspended process creation).
+    """
+    return _remote_factorial("F", "spawn")
+
+
+PHASES = {
+    "A": phase_a, "B": phase_b, "C": phase_c,
+    "D": phase_d, "E": phase_e, "F": phase_f,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -341,7 +361,7 @@ def summarize_csv(csv_path):
 
     phase_names = {
         "A": "Sanity", "B": "Main (RWX)", "C": "W^X",
-        "D": "Antidebug", "E": "Remote",
+        "D": "Antidebug", "E": "Remote (existing)", "F": "Spawn (suspended)",
     }
     for phase in sorted(by_phase):
         counts = by_phase[phase]
@@ -379,8 +399,8 @@ def main():
                              "Required unless --dry-run or --summarize is used.")
     parser.add_argument("--vm", default="Windows Defender",
                         help="VM name from controller/config.py (default: 'Windows Defender')")
-    parser.add_argument("--phases", default="A,B,C,D,E",
-                        help="Comma-separated phase keys (A/B/C/D/E). Default: all.")
+    parser.add_argument("--phases", default="A,B,C,D,E,F",
+                        help="Comma-separated phase keys (A/B/C/D/E/F). Default: all.")
     parser.add_argument("--resume", metavar="CSV",
                         help="Existing CSV to resume; rows already in CSV are skipped.")
     parser.add_argument("--dry-run", action="store_true",
