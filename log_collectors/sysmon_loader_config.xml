@@ -67,19 +67,22 @@
     <!-- ================================================================== -->
     <!-- ================================================================== -->
     <!-- Event 3: NetworkConnect                                            -->
-    <!-- Stage: L1 (future network-backed storage technique).              -->
     <!--                                                                    -->
-    <!-- Note: the C2 callback that the msfvenom reverse-TCP shellcode     -->
-    <!-- makes after execution is SHELLCODE behavior, not loader           -->
-    <!-- behavior, and is out of scope. We therefore only log connections  -->
-    <!-- originating from the payload binary itself (not from shellcode-   -->
-    <!-- spawned children) and ignore the destination port entirely. When  -->
-    <!-- a future L1 technique pulls the payload from a URL, the same      -->
-    <!-- rule will capture it.                                              -->
+    <!-- Two purposes:                                                     -->
+    <!--   1. Stage L1 (future): a future storage technique that fetches   -->
+    <!--      the payload from a URL will fire here (Image on Desktop).    -->
+    <!--   2. Control marker: the shellcode's callback to our C2 port      -->
+    <!--      (4444) is used as an external confirmation that the          -->
+    <!--      loader completed its pipeline. This is SHELLCODE behavior    -->
+    <!--      not loader behavior, but we retain it as a control           -->
+    <!--      observation so the log can show "shellcode did run" even    -->
+    <!--      when the shellcode runs inside a non-Desktop host (e.g.     -->
+    <!--      explorer.exe after remote injection).                        -->
     <!-- ================================================================== -->
     <RuleGroup name="NetworkConnect" groupRelation="or">
       <NetworkConnect onmatch="include">
         <Image condition="contains">\Desktop\</Image>
+        <DestinationPort condition="is">4444</DestinationPort>
       </NetworkConnect>
     </RuleGroup>
 
