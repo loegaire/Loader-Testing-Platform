@@ -104,7 +104,8 @@ Wrapped functions: `MyVirtualAllocEx`, `MyVirtualProtect`, `MyCreateThreadEx`, `
 
 `log_collectors/sysmon_loader_config.xml` (schema 4.91) scopes Sysmon rules to loader-relevant activity. Key design rules:
 - `ProcessAccess` includes only `SourceImage contains \Desktop\` — a broader `GrantedAccess` filter matches every service-to-service call and drowns the payload signal.
-- `ProcessCreate` excludes shellcode-spawned `cmd.exe` and `conhost.exe` — those are payload behavior, not loader behavior (per the shellcode-vs-loader scope boundary in the paper).
+- `ProcessCreate` includes the loader binary (Desktop images), spawn-suspended targets (`notepad.exe`, `rundll32.exe`), and the first-hop shellcode-spawned `cmd.exe` / `conhost.exe` scoped via an **AND** rule (parent must be on Desktop). First-hop shell spawn is kept for kill-chain visibility; deeper payload behavior (cmd → powershell → …) remains out of scope. A flat OR-grouped exclude (prior version) silently dropped every child of a Desktop parent — including `notepad.exe` for the T2.4 spawn chain.
+- `ProcessTerminate` (Event 5) is scoped to the same image set as `ProcessCreate`. Used to distinguish *detected-but-no-action* (Event 1116 with empty Action, no Event 5) from *detected-and-terminated* (Event 5 on `payload.exe` shortly after Defender 1116/1117).
 - `FileCreate` narrows to `\Desktop\` and excludes the harness's own output files (`detection_log.*`, `sysmon.xml`, `collect_logs.ps1`).
 - `NetworkConnect` includes Desktop-sourced connections plus `DestinationPort=4444` (C2 port) as a control marker for successful shellcode execution.
 - `CreateRemoteThread` excludes boot-time system processes (`csrss`, `services`, `svchost`, `MsMpEng`, `vmtoolsd`, `winlogon`, `wininit`, `smss`, `dwm`, `lsass`).

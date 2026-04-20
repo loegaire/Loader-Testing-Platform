@@ -14,6 +14,7 @@
     L4 (Writing)       -> Event 10 (ProcessAccess) when remote (T4.3);
                           no direct event for local memcpy / VirtualProtect
     L5 (Execution)     -> Event 1 (ProcessCreate) for child spawn;
+                          Event 5 (ProcessTerminate) for kill-chain visibility;
                           Event 8 (CreateRemoteThread) when remote (T5.4);
                           Event 25 (ProcessTampering) for hollowing
 
@@ -31,34 +32,58 @@
 
     <!-- ================================================================== -->
     <!-- Event 1: ProcessCreate                                             -->
-    <!-- Stage: L5 (Execution) — loader invocation only.                   -->
+    <!-- Stage: L5 (Execution) — loader invocation + first-hop diagnostics -->
     <!--                                                                    -->
-    <!-- Scope decision: the loader's responsibility ends when the         -->
-    <!-- shellcode is executing. What the shellcode does next (spawning a  -->
-    <!-- cmd.exe reverse shell, for example) is shellcode/payload          -->
-    <!-- behavior, not loader behavior. We therefore exclude shellcode-    -->
-    <!-- spawned children (cmd.exe, conhost.exe) via the exclude rule.     -->
+    <!-- Scope: loader binary, spawn-suspended targets (T2.4), and the    -->
+    <!-- immediate shellcode-spawned shell / console host when the parent -->
+    <!-- is the loader on Desktop. The first-hop shell spawn is kept for  -->
+    <!-- kill-chain visibility (did the chain reach that step before any  -->
+    <!-- termination?). Deeper payload behavior (cmd -> powershell -> ...)-->
+    <!-- remains out of scope.                                            -->
     <!--                                                                    -->
-    <!-- Include rules: only the loader binary being invoked, or the       -->
-    <!-- spawn-suspended target (T2.4: payload -> notepad.exe).            -->
+    <!-- Implementation note: shell / conhost inclusion is scoped with an -->
+    <!-- AND rule so only payload-parented instances are captured. A flat -->
+    <!-- OR-grouped exclude block (prior version) silently dropped every  -->
+    <!-- child of a Desktop parent, including notepad.exe for the T2.4    -->
+    <!-- spawn chain.                                                     -->
     <!-- ================================================================== -->
-    <RuleGroup name="ProcessCreate-Exclude" groupRelation="or">
-      <ProcessCreate onmatch="exclude">
-        <!-- Shellcode-spawned shell and its console host (payload behavior) -->
-        <ParentImage condition="contains">\Desktop\</ParentImage>
-        <Image condition="end with">cmd.exe</Image>
-        <Image condition="end with">conhost.exe</Image>
-      </ProcessCreate>
-    </RuleGroup>
-
     <RuleGroup name="ProcessCreate-Include" groupRelation="or">
       <ProcessCreate onmatch="include">
-        <!-- Loader invocation: payload.exe being launched -->
+        <!-- Loader invocation: payload.exe being launched from Desktop -->
         <Image condition="contains">\Desktop\</Image>
         <!-- Spawn-suspended target when using T2.4 -->
         <Image condition="end with">notepad.exe</Image>
         <Image condition="end with">rundll32.exe</Image>
+        <!-- Shellcode-spawned shell + console host (parent must be Desktop) -->
+        <Rule name="shellcode_cmd" groupRelation="and">
+          <ParentImage condition="contains">\Desktop\</ParentImage>
+          <Image condition="end with">cmd.exe</Image>
+        </Rule>
+        <Rule name="shellcode_conhost" groupRelation="and">
+          <ParentImage condition="contains">\Desktop\</ParentImage>
+          <Image condition="end with">conhost.exe</Image>
+        </Rule>
       </ProcessCreate>
+    </RuleGroup>
+
+    <!-- ================================================================== -->
+    <!-- Event 5: ProcessTerminate                                          -->
+    <!-- Stage: L5 outcome — observes termination of payload.exe, spawn-  -->
+    <!-- suspended targets, and the first-hop shellcode children. Used to -->
+    <!-- distinguish "Defender detected but took no action" (Event 1116   -->
+    <!-- with empty Action, no Event 5) from "Defender detected and       -->
+    <!-- terminated" (Event 5 on payload.exe shortly after Defender       -->
+    <!-- Event 1116 / 1117). Scope mirrors ProcessCreate so the           -->
+    <!-- start -> end lifecycle of a run is symmetric in the log.         -->
+    <!-- ================================================================== -->
+    <RuleGroup name="ProcessTerminate-Include" groupRelation="or">
+      <ProcessTerminate onmatch="include">
+        <Image condition="contains">\Desktop\</Image>
+        <Image condition="end with">notepad.exe</Image>
+        <Image condition="end with">rundll32.exe</Image>
+        <Image condition="end with">cmd.exe</Image>
+        <Image condition="end with">conhost.exe</Image>
+      </ProcessTerminate>
     </RuleGroup>
 
     <!-- ================================================================== -->

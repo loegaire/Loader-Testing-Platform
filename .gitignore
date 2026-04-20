@@ -24,3 +24,5 @@ build/generated_loader.cpp
 shellcodes/*.bin
 /.claude
 *.csv
+/experiments/20260420_182305
+*.zip

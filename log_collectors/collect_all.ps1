@@ -8,7 +8,7 @@
     - Sysmon events mapped to loader pipeline stages:
       L1 (Storage):   Event 11 (FileCreate), Event 3 (NetworkConnect), Event 22 (DNS)
       L2 (Allocation): Event 10 (ProcessAccess)
-      L5 (Execution): Event 1 (ProcessCreate), Event 8 (CreateRemoteThread), Event 25 (ProcessTampering)
+      L5 (Execution): Event 1 (ProcessCreate), Event 5 (ProcessTerminate), Event 8 (CreateRemoteThread), Event 25 (ProcessTampering)
     Outputs structured text and CSV for automated parsing.
 .OUTPUTS
     C:\Users\<CurrentUser>\Desktop\detection_log.txt  (human-readable)
@@ -282,6 +282,30 @@ if ($procEvents) {
     }
 } else {
     Write-Log "No ProcessCreate events."
+}
+
+# Event 5: ProcessTerminate (kill-chain visibility)
+$termEvents = Get-WinEvent -FilterHashtable @{
+    LogName   = 'Microsoft-Windows-Sysmon/Operational';
+    ID        = 5;
+    StartTime = $StartTime;
+} -ErrorAction SilentlyContinue
+
+if ($termEvents) {
+    foreach ($event in $termEvents) {
+        $eventXML = [xml]$event.ToXml()
+        $image = ($eventXML.Event.EventData.Data | Where-Object { $_.Name -eq 'Image' }).'#text'
+        $pid2  = ($eventXML.Event.EventData.Data | Where-Object { $_.Name -eq 'ProcessId' }).'#text'
+
+        Write-Log "[ProcessTerminate] $($event.TimeCreated)"
+        Write-Log "  Process: $image"
+        Write-Log "  PID:     $pid2"
+        Write-Log ""
+
+        Write-Csv $event.TimeCreated "Sysmon" 5 "L5" "ProcessTerminate" "$image (pid=$pid2)"
+    }
+} else {
+    Write-Log "No ProcessTerminate events."
 }
 
 # Event 25: ProcessTampering
