@@ -126,8 +126,11 @@ Update-MpSignature
 Reboot the VM once, then shut it down cleanly. 
 🐧 **[Linux Host]**
 ```bash
-# Take the testing snapshot (Must be named EXACTLY 'clean_snapshot')
-virsh -c qemu:///system snapshot-create-as --domain win11-defender --name "clean_snapshot" --description "Ready for automated testing"
+virsh -c qemu:///system snapshot-delete Win11_Defender clean_snapshot --metadata || true
+virsh -c qemu:///system snapshot-create-as \
+  --domain Win11_Defender \
+  --name "clean_snapshot" \
+  --description "Ready for automated testing"
 ```
 
 ---

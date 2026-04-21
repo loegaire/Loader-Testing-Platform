@@ -51,29 +51,7 @@ ATT\&CK operates at a strategic, cross-sample level and does not model the inter
 
 \subsection{Research Gap}
 
-Table~\ref{tab:gap} positions this work against representative systems in the three categories above.
-We retain only the axes that are meaningful for a loader-focused study: stage-level decomposition of loader internals, automated generation of technique variants, and a stage-aware detection methodology.
-
-\begin{table}[htbp]
-    \centering
-    \caption{Positioning against representative systems. Only this work combines stage-level decomposition, modular variant generation, and a stage-aware detection methodology; the last item is \textit{proposed} here and scoped to future work for empirical validation.}
-    \label{tab:gap}
-    \small
-    \begin{tabular}{@{}p{2.8cm}ccc@{}}
-        \toprule
-        \textbf{System} & \rotatebox{70}{\textbf{Stage decomp.}} & \rotatebox{70}{\textbf{Variant gen.}} & \rotatebox{70}{\textbf{Stage-aware det.}} \\
-        \midrule
-        MITRE ATT\&CK~\cite{mitre_attack}         & Partial    & ---        & ---        \\
-        Cuckoo / ANY.RUN~\cite{cuckoo,anyrun}     & ---        & ---        & ---        \\
-        AV-TEST / AV-Comp.~\cite{avtest,avcomparatives} & ---  & ---        & ---        \\
-        Donut~\cite{donut}                        & ---        & \checkmark & ---        \\
-        ScareCrow~\cite{scarecrow}                & ---        & \checkmark & ---        \\
-        Inceptor~\cite{inceptor}                  & ---        & \checkmark & ---        \\
-        Havoc loader~\cite{havoc}                 & ---        & \checkmark & ---        \\
-        \textbf{This work}                        & \checkmark & \checkmark & Proposed   \\
-        \bottomrule
-    \end{tabular}
-\end{table}
+We frame the gap along three axes meaningful for a loader-focused study: stage-level decomposition of loader internals, automated generation of technique variants, and a stage-aware detection methodology---the last item is \textit{proposed} here and scoped to future work for empirical validation.
 
 Existing loader frameworks generate functional loaders but do not expose an internal stage structure for research.
 Individual-technique studies explain specific mechanisms but are not framed within a unified pipeline.

@@ -237,6 +237,12 @@ The intent is that, once these candidates are turned into concrete rules, the ta
     \end{tabular}
 \end{table*}
 
+\textbf{Scope boundary: loader versus shellcode.}
+The detection surface above covers the loader only.
+Activity performed by the shellcode after execution---for example, a reverse-shell callback from \texttt{msfvenom}'s \texttt{shell\_reverse\_tcp} payload, or a spawned \texttt{cmd.exe} child---is \emph{payload behavior}, not loader behavior, and is excluded from the mapping.
+This is consistent with the shellcode/loader decomposition of Section~2.1: the shellcode answers \emph{what}, so its runtime effects belong to the \emph{what} side of the line; the loader answers \emph{how}, and its observable effects end when the shellcode begins executing.
+In practice this narrows the telemetry filters to events sourced from or targeting the loader process during the pre-execution stages (L1--L5 up to the point of control transfer) and discards post-execution effects.
+
 \textbf{Visibility caveat: process locality.}
 The mapping above is technique-source-dependent and process-boundary-dependent.
 For a loader whose L2, L4, and L5 operations all execute inside a single process, intra-stage technique choices---for example local thread creation versus callback-based execution versus fiber switching at L5---do not surface as distinct Sysmon events because the underlying operations either lack a dedicated event (\texttt{VirtualProtect}, \texttt{SwitchToFiber}) or do not cross a process boundary (\texttt{CreateThread} on the calling process).

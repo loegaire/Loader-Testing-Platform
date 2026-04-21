@@ -14,6 +14,7 @@
     L4 (Writing)       -> Event 10 (ProcessAccess) when remote (T4.3);
                           no direct event for local memcpy / VirtualProtect
     L5 (Execution)     -> Event 1 (ProcessCreate) for child spawn;
+                          Event 5 (ProcessTerminate) for kill-chain visibility;
                           Event 8 (CreateRemoteThread) when remote (T5.4);
                           Event 25 (ProcessTampering) for hollowing
 
@@ -31,37 +32,82 @@
 
     <!-- ================================================================== -->
     <!-- Event 1: ProcessCreate                                             -->
-    <!-- Stage: L5 (Execution) — captures shellcode-spawned children and   -->
-    <!--        suspended targets created by the remote chain.             -->
+    <!-- Stage: L5 (Execution) — loader invocation + first-hop diagnostics -->
+    <!--                                                                    -->
+    <!-- Scope: loader binary, spawn-suspended targets (T2.4), and the    -->
+    <!-- immediate shellcode-spawned shell / console host when the parent -->
+    <!-- is the loader on Desktop. The first-hop shell spawn is kept for  -->
+    <!-- kill-chain visibility (did the chain reach that step before any  -->
+    <!-- termination?). Deeper payload behavior (cmd -> powershell -> ...)-->
+    <!-- remains out of scope.                                            -->
+    <!--                                                                    -->
+    <!-- Implementation note: shell / conhost inclusion is scoped with an -->
+    <!-- AND rule so only payload-parented instances are captured. A flat -->
+    <!-- OR-grouped exclude block (prior version) silently dropped every  -->
+    <!-- child of a Desktop parent, including notepad.exe for the T2.4    -->
+    <!-- spawn chain.                                                     -->
     <!-- ================================================================== -->
-    <RuleGroup name="ProcessCreate" groupRelation="or">
+    <RuleGroup name="ProcessCreate-Include" groupRelation="or">
       <ProcessCreate onmatch="include">
-        <ParentImage condition="end with">payload.exe</ParentImage>
-        <ParentImage condition="end with">cmd.exe</ParentImage>
-        <ParentImage condition="end with">powershell.exe</ParentImage>
-        <!-- Catch shellcode-spawned children when injected into an existing
-             host process (explorer.exe is the T2.3 target; notepad/rundll32
-             are common alternatives that may be added later). -->
-        <ParentImage condition="end with">explorer.exe</ParentImage>
-        <ParentImage condition="end with">notepad.exe</ParentImage>
-        <ParentImage condition="end with">rundll32.exe</ParentImage>
+        <!-- Loader invocation: payload.exe being launched from Desktop -->
         <Image condition="contains">\Desktop\</Image>
+        <!-- Spawn-suspended target when using T2.4 -->
+        <Image condition="end with">notepad.exe</Image>
+        <Image condition="end with">rundll32.exe</Image>
+        <!-- Shellcode-spawned shell + console host (parent must be Desktop) -->
+        <Rule name="shellcode_cmd" groupRelation="and">
+          <ParentImage condition="contains">\Desktop\</ParentImage>
+          <Image condition="end with">cmd.exe</Image>
+        </Rule>
+        <Rule name="shellcode_conhost" groupRelation="and">
+          <ParentImage condition="contains">\Desktop\</ParentImage>
+          <Image condition="end with">conhost.exe</Image>
+        </Rule>
       </ProcessCreate>
+    </RuleGroup>
+
+    <!-- ================================================================== -->
+    <!-- Event 5: ProcessTerminate                                          -->
+    <!-- Stage: L5 outcome — observes termination of payload.exe, spawn-  -->
+    <!-- suspended targets, and the first-hop shellcode children. Used to -->
+    <!-- distinguish "Defender detected but took no action" (Event 1116   -->
+    <!-- with empty Action, no Event 5) from "Defender detected and       -->
+    <!-- terminated" (Event 5 on payload.exe shortly after Defender       -->
+    <!-- Event 1116 / 1117). Scope mirrors ProcessCreate so the           -->
+    <!-- start -> end lifecycle of a run is symmetric in the log.         -->
+    <!-- ================================================================== -->
+    <RuleGroup name="ProcessTerminate-Include" groupRelation="or">
+      <ProcessTerminate onmatch="include">
+        <Image condition="contains">\Desktop\</Image>
+        <Image condition="end with">notepad.exe</Image>
+        <Image condition="end with">rundll32.exe</Image>
+        <Image condition="end with">cmd.exe</Image>
+        <Image condition="end with">conhost.exe</Image>
+      </ProcessTerminate>
     </RuleGroup>
 
     <!-- ================================================================== -->
     <!-- Event 3: NetworkConnect                                            -->
     <!-- Stage: L1 (Storage, future) and shellcode C2 callback             -->
     <!-- ================================================================== -->
+    <!-- ================================================================== -->
+    <!-- Event 3: NetworkConnect                                            -->
+    <!--                                                                    -->
+    <!-- Two purposes:                                                     -->
+    <!--   1. Stage L1 (future): a future storage technique that fetches   -->
+    <!--      the payload from a URL will fire here (Image on Desktop).    -->
+    <!--   2. Control marker: the shellcode's callback to our C2 port      -->
+    <!--      (4444) is used as an external confirmation that the          -->
+    <!--      loader completed its pipeline. This is SHELLCODE behavior    -->
+    <!--      not loader behavior, but we retain it as a control           -->
+    <!--      observation so the log can show "shellcode did run" even    -->
+    <!--      when the shellcode runs inside a non-Desktop host (e.g.     -->
+    <!--      explorer.exe after remote injection).                        -->
+    <!-- ================================================================== -->
     <RuleGroup name="NetworkConnect" groupRelation="or">
       <NetworkConnect onmatch="include">
         <Image condition="contains">\Desktop\</Image>
-        <!-- C2 callback ports (shellcode spawned from payload or target) -->
         <DestinationPort condition="is">4444</DestinationPort>
-        <DestinationPort condition="is">443</DestinationPort>
-        <DestinationPort condition="is">80</DestinationPort>
-        <DestinationPort condition="is">8080</DestinationPort>
-        <DestinationPort condition="is">8443</DestinationPort>
       </NetworkConnect>
     </RuleGroup>
 
@@ -102,7 +148,17 @@
     <!-- chain when payload accesses the target process for VirtualAllocEx -->
     <!-- and WriteProcessMemory.                                            -->
     <!-- ================================================================== -->
-    <RuleGroup name="ProcessAccess" groupRelation="or">
+    <RuleGroup name="ProcessAccess-Exclude" groupRelation="or">
+      <ProcessAccess onmatch="exclude">
+        <!-- Shellcode spawning a cmd reverse-shell is payload behavior,
+             not loader behavior — exclude it so the log captures only
+             the loader's allocation/write/execute accesses. -->
+        <TargetImage condition="end with">cmd.exe</TargetImage>
+        <TargetImage condition="end with">conhost.exe</TargetImage>
+      </ProcessAccess>
+    </RuleGroup>
+
+    <RuleGroup name="ProcessAccess-Include" groupRelation="or">
       <ProcessAccess onmatch="include">
         <SourceImage condition="contains">\Desktop\</SourceImage>
       </ProcessAccess>

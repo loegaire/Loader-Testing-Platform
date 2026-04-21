@@ -76,13 +76,43 @@ Orchestrated by `controller/modules/builder.py`. The Makefile compiles C++ (MinG
 
 `src/api/api_wrappers.h` wraps NT API calls with two modes selected via `--api`:
 - `winapi` (default) — standard Windows API
-- `syscalls` — direct syscall via NASM stubs. Covers `NtAllocateVirtualMemory`, `NtProtectVirtualMemory`, `NtCreateThreadEx`, `NtWaitForSingleObject`.
+- `syscalls` — direct syscall via NASM stubs. Covers `NtAllocateVirtualMemory`, `NtProtectVirtualMemory`, `NtCreateThreadEx`, `NtWaitForSingleObject`, `NtWriteVirtualMemory`.
 
-Wrapped functions: `MyVirtualAllocEx`, `MyVirtualProtect`, `MyCreateThreadEx`, `MyWaitForSingleObject`.
+Wrapped functions: `MyVirtualAllocEx`, `MyVirtualProtect`, `MyCreateThreadEx`, `MyWaitForSingleObject`, `MyWriteProcessMemory`.
 
 ### Test Execution (VM)
 
 `controller/core_engine.py` manages the full test cycle: revert VM snapshot → start → deploy payload → listen for C2 callback (`controller/modules/c2.py`) → execute → collect Defender/Sysmon logs → report result. VM config lives in `controller/config.py`. VM backend is KVM/libvirt via `virsh` — Linux host only.
+
+**Payload launch goes through `vm.launch_interactive()`, not SSH `Start-Process`.** SSH-spawned processes live in the sshd service session (often Session 0). A remote-injection loader that calls `OpenProcess` on `explorer.exe` (user's interactive Session 1) fails cross-session even though the same code works when launched manually from the desktop. `launch_interactive()` registers a one-shot Task Scheduler task with `-LogonType Interactive -RunLevel Limited`, which runs the payload in the logged-in user's session at Medium integrity. This requires the guest to have an active interactive session of the test user at boot — set up by `log_collectors/setup_guest.ps1` (enables autologin).
+
+**Privilege split**: loader runs at Medium integrity (standard-user token); no loader technique in this repo needs `SeDebugPrivilege` because all cross-process operations are same-user. Admin is required only for the harness itself (Sysmon config apply, event log reading).
+
+### Guest Snapshot Setup
+
+`log_collectors/setup_guest.ps1` is run inside the VM **once** before taking `clean_snapshot`. It:
+1. Enables autologin for `tester` so an interactive session exists at boot (required for Task Scheduler interactive launch).
+2. Ensures Sysmon service is autostart; applies baseline `sysmon_loader_config.xml`.
+3. Disables Defender MAPS + sample submission (prevents cloud signature drift between runs — a config that succeeded at `t1` would otherwise be blocked at `t2` with no code change).
+4. Writes `guest_fingerprint.txt` (Defender engine/signature versions, Windows build) to the desktop for paper reproducibility.
+
+**To update `clean_snapshot` after changing guest state:** `virsh snapshot-create-as` does NOT overwrite an existing same-name snapshot; delete first. Sequence: shutdown guest → `virsh snapshot-delete <domain> clean_snapshot` → `virsh snapshot-create-as <domain> clean_snapshot`.
+
+### Telemetry Collection
+
+`log_collectors/collect_all.ps1` is copied to the guest and run at the end of each test cycle. It anchors its event window to the `ProcessCreate` event for `payload.exe` (with a 5-second lookback), falling back to a fixed minute-window if the payload never ran. This scopes the collected log to the current run's events without needing to wipe the Sysmon log between runs.
+
+`log_collectors/sysmon_loader_config.xml` (schema 4.91) scopes Sysmon rules to loader-relevant activity. Key design rules:
+- `ProcessAccess` includes only `SourceImage contains \Desktop\` — a broader `GrantedAccess` filter matches every service-to-service call and drowns the payload signal.
+- `ProcessCreate` includes the loader binary (Desktop images), spawn-suspended targets (`notepad.exe`, `rundll32.exe`), and the first-hop shellcode-spawned `cmd.exe` / `conhost.exe` scoped via an **AND** rule (parent must be on Desktop). First-hop shell spawn is kept for kill-chain visibility; deeper payload behavior (cmd → powershell → …) remains out of scope. A flat OR-grouped exclude (prior version) silently dropped every child of a Desktop parent — including `notepad.exe` for the T2.4 spawn chain.
+- `ProcessTerminate` (Event 5) is scoped to the same image set as `ProcessCreate`. Used to distinguish *detected-but-no-action* (Event 1116 with empty Action, no Event 5) from *detected-and-terminated* (Event 5 on `payload.exe` shortly after Defender 1116/1117).
+- `FileCreate` narrows to `\Desktop\` and excludes the harness's own output files (`detection_log.*`, `sysmon.xml`, `collect_logs.ps1`).
+- `NetworkConnect` includes Desktop-sourced connections plus `DestinationPort=4444` (C2 port) as a control marker for successful shellcode execution.
+- `CreateRemoteThread` excludes boot-time system processes (`csrss`, `services`, `svchost`, `MsMpEng`, `vmtoolsd`, `winlogon`, `wininit`, `smss`, `dwm`, `lsass`).
+
+### Batch Runs
+
+`experiments/run_tests.py` runs the full phase matrix (A sanity, B main RWX, C W^X, D antidebug, E remote-existing, F spawn-suspended). Output goes to `experiments/runs/<batch_timestamp>/` containing `matrix.csv`, `run_<id>_<rep>.log` (harness trace), and `guest_<id>_<rep>.txt` (raw Defender+Sysmon telemetry). `core_engine.run_single_test()` accepts `log_dir` and `log_name` parameters for this redirection; `cli.py` single runs still write to `test_logs/`.
 
 ## Current Technique Inventory
 

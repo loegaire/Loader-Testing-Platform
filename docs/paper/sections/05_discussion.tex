@@ -103,7 +103,9 @@ The contribution of the present work is the descriptive model of the loader clas
 Every claim in this paper, once experiments are populated, depends on a small set of artifacts that need to be named explicitly.
 A run is identified by the tuple $C$, the Defender engine version, the Defender definition version, the Windows build number, the Sysmon version and configuration hash, and the shellcode SHA-256.
 The platform records these per run and emits them in the CSV row alongside the outcome code, so that a later reader can re-execute the same configuration and check whether the same verdict is produced.
-The source code of the platform, the Sysmon configuration, the exact \texttt{msfvenom} invocation used to generate the reference shellcode, and the log-analysis scripts are provided with the paper.\footnote{Repository and commit identifier: \textit{to be added at camera-ready}.}
+At the batch level, a one-shot guest-preparation script (\texttt{setup\_guest.ps1}) enables auto-login, pins the Defender cloud-reporting settings, applies a baseline Sysmon configuration, and writes a \texttt{guest\_fingerprint.txt} file on the guest's desktop capturing the engine and signature versions at snapshot time.
+That fingerprint becomes the canonical reference for the snapshot under which the batch was collected, distinguishing it from later snapshots with updated definitions.
+The source code of the platform, the Sysmon configuration XML, the guest setup script, the exact \texttt{msfvenom} invocation used to generate the reference shellcode, and the log-analysis scripts are provided with the paper.\footnote{Repository and commit identifier: \textit{to be added at camera-ready}.}
 
 \subsection{Future Work}
 

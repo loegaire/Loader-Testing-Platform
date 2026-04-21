@@ -8,7 +8,7 @@
     - Sysmon events mapped to loader pipeline stages:
       L1 (Storage):   Event 11 (FileCreate), Event 3 (NetworkConnect), Event 22 (DNS)
       L2 (Allocation): Event 10 (ProcessAccess)
-      L5 (Execution): Event 1 (ProcessCreate), Event 8 (CreateRemoteThread), Event 25 (ProcessTampering)
+      L5 (Execution): Event 1 (ProcessCreate), Event 5 (ProcessTerminate), Event 8 (CreateRemoteThread), Event 25 (ProcessTampering)
     Outputs structured text and CSV for automated parsing.
 .OUTPUTS
     C:\Users\<CurrentUser>\Desktop\detection_log.txt  (human-readable)
@@ -16,7 +16,9 @@
 #>
 
 param(
-    [int]$Minutes = 5
+    [int]$Minutes = 5,           # Fallback window if payload event not found
+    [int]$PayloadLookbackSec = 5 # Include events this many seconds BEFORE payload start
+                                  # (captures any pre-process telemetry that belongs to the same run)
 )
 
 # --- Configuration ---
@@ -24,7 +26,57 @@ $logFile = "$env:USERPROFILE\Desktop\detection_log.txt"
 $csvFile = "$env:USERPROFILE\Desktop\detection_log.csv"
 
 $EndTime = Get-Date
-$StartTime = $EndTime.AddMinutes(-$Minutes)
+
+# --- Time-window resolution ---
+# Prefer anchoring to the ProcessCreate event for payload.exe so that
+# the collected log contains only the current run's telemetry. If no
+# payload ProcessCreate exists yet (payload never reached execution),
+# fall back to a fixed lookback window.
+#
+# Staleness guard: if the newest payload.exe ProcessCreate in the Sysmon
+# log is older than $MaxAnchorAgeMin, treat it as stale. This happens
+# when payload.exe never ran in the current run (e.g., Defender blocked
+# it before Task Scheduler could start it) AND the VM's clean snapshot
+# was taken with prior payload.exe events already in the Sysmon log.
+# Without this guard, the anchor silently resolves to a pre-snapshot
+# event and the time window stretches over hours of stale telemetry.
+$MaxAnchorAgeMin = 10
+$payloadStart = $null
+$anchorStale = $false
+try {
+    $procEvents = Get-WinEvent -FilterHashtable @{
+        LogName = 'Microsoft-Windows-Sysmon/Operational';
+        ID      = 1;
+    } -MaxEvents 200 -ErrorAction Stop
+
+    foreach ($e in $procEvents) {
+        $xml = [xml]$e.ToXml()
+        $img = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'Image' }).'#text'
+        if ($img -like '*\payload.exe') {
+            # Events come back newest-first; first match is the latest payload launch.
+            $age = (Get-Date) - $e.TimeCreated
+            if ($age.TotalMinutes -le $MaxAnchorAgeMin) {
+                $payloadStart = $e.TimeCreated
+            } else {
+                $anchorStale = $true
+            }
+            break
+        }
+    }
+} catch {
+    # No Sysmon events at all; leave $payloadStart null
+}
+
+if ($null -ne $payloadStart) {
+    $StartTime = $payloadStart.AddSeconds(-$PayloadLookbackSec)
+    $anchorNote = "anchored to payload.exe ProcessCreate at $payloadStart (-${PayloadLookbackSec}s lookback)"
+} elseif ($anchorStale) {
+    $StartTime = $EndTime.AddMinutes(-$Minutes)
+    $anchorNote = "newest payload.exe ProcessCreate older than ${MaxAnchorAgeMin}min (stale, pre-snapshot); using $Minutes-minute fallback window"
+} else {
+    $StartTime = $EndTime.AddMinutes(-$Minutes)
+    $anchorNote = "payload.exe ProcessCreate not found; using $Minutes-minute fallback window"
+}
 
 # Clean previous logs
 if (Test-Path $logFile) { Remove-Item $logFile }
@@ -65,7 +117,19 @@ if ($null -eq $defenderEvents) {
         $eventXML = [xml]$event.ToXml()
         $threatName = ($eventXML.Event.EventData.Data | Where-Object { $_.Name -eq 'Threat Name' }).'#text'
         $filePath   = ($eventXML.Event.EventData.Data | Where-Object { $_.Name -eq 'Path' }).'#text'
-        $action     = ($eventXML.Event.EventData.Data | Where-Object { $_.Name -eq 'Action' }).'#text'
+        # Defender XML fields are "Action Name" (human) and "Action ID" (numeric).
+        # The prior collector looked up "Action" which does not exist, so every
+        # Action field rendered blank. Prefer Name; fall back to "ID=<n>" so a
+        # value is always present even on exotic events.
+        $actionName = ($eventXML.Event.EventData.Data | Where-Object { $_.Name -eq 'Action Name' }).'#text'
+        $actionId   = ($eventXML.Event.EventData.Data | Where-Object { $_.Name -eq 'Action ID' }).'#text'
+        if ([string]::IsNullOrWhiteSpace($actionName)) {
+            if ([string]::IsNullOrWhiteSpace($actionId)) { $action = "(none)" }
+            else { $action = "ActionId=$actionId" }
+        } else {
+            $action = $actionName
+            if (-not [string]::IsNullOrWhiteSpace($actionId)) { $action = "$actionName (id=$actionId)" }
+        }
         $severity   = ($eventXML.Event.EventData.Data | Where-Object { $_.Name -eq 'Severity Name' }).'#text'
 
         Write-Log "Time:     $($event.TimeCreated)"
@@ -77,7 +141,7 @@ if ($null -eq $defenderEvents) {
         Write-Log "---------------------------------"
         Write-Log ""
 
-        Write-Csv $event.TimeCreated "Defender" $event.Id "AV" $threatName $filePath
+        Write-Csv $event.TimeCreated "Defender" $event.Id "AV" $threatName "$filePath | Action=$action"
     }
 }
 
@@ -250,6 +314,30 @@ if ($procEvents) {
     Write-Log "No ProcessCreate events."
 }
 
+# Event 5: ProcessTerminate (kill-chain visibility)
+$termEvents = Get-WinEvent -FilterHashtable @{
+    LogName   = 'Microsoft-Windows-Sysmon/Operational';
+    ID        = 5;
+    StartTime = $StartTime;
+} -ErrorAction SilentlyContinue
+
+if ($termEvents) {
+    foreach ($event in $termEvents) {
+        $eventXML = [xml]$event.ToXml()
+        $image = ($eventXML.Event.EventData.Data | Where-Object { $_.Name -eq 'Image' }).'#text'
+        $pid2  = ($eventXML.Event.EventData.Data | Where-Object { $_.Name -eq 'ProcessId' }).'#text'
+
+        Write-Log "[ProcessTerminate] $($event.TimeCreated)"
+        Write-Log "  Process: $image"
+        Write-Log "  PID:     $pid2"
+        Write-Log ""
+
+        Write-Csv $event.TimeCreated "Sysmon" 5 "L5" "ProcessTerminate" "$image (pid=$pid2)"
+    }
+} else {
+    Write-Log "No ProcessTerminate events."
+}
+
 # Event 25: ProcessTampering
 $tamperEvents = Get-WinEvent -FilterHashtable @{
     LogName   = 'Microsoft-Windows-Sysmon/Operational';
@@ -277,7 +365,8 @@ if ($tamperEvents) {
 # --- Summary ---
 Write-Log ""
 Write-Log "=== COLLECTION COMPLETE ==="
-Write-Log "Time range: $StartTime to $EndTime ($Minutes minutes)"
+Write-Log "Time range: $StartTime to $EndTime"
+Write-Log "Anchor:     $anchorNote"
 Write-Log "Text log:   $logFile"
 Write-Log "CSV log:    $csvFile"
 
